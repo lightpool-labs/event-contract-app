@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+.next/
+out/
+
+# Rust
+backend/target/
+
+# Env
+.env
+.env.local
+
+# OS
+.DS_Store
+
+# Logs
+*.log
