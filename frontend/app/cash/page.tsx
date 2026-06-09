@@ -37,7 +37,7 @@ export default async function CashPage() {
           </thead>
           <tbody>
             {cashBalances.map((b) => (
-              <tr key={b.symbol} className="border-t border-slate-100">
+              <tr key={b.token} className="border-t border-slate-100">
                 <td className="px-4 py-3 font-medium">{b.symbol}</td>
                 <td className="px-4 py-3">{b.total}</td>
                 <td className="px-4 py-3">{b.locked}</td>

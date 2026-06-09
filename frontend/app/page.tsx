@@ -27,9 +27,14 @@ export default async function HomePage() {
             href={`/markets/${market.id}`}
             className="block rounded-lg border border-slate-200 bg-white p-4 shadow-sm hover:border-slate-300"
           >
-            <div className="mb-2 flex items-center justify-between gap-4">
-              <h2 className="font-medium">{market.question}</h2>
-              <span className="rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-700">
+            <div className="mb-2 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <h2 className="font-medium">{market.question}</h2>
+                <p className="mt-1 break-all font-mono text-xs text-slate-500">
+                  {market.market_address}
+                </p>
+              </div>
+              <span className="shrink-0 rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-700">
                 {market.state}
               </span>
             </div>

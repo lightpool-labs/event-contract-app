@@ -48,12 +48,12 @@ export default function MarketDetailPage({
   return (
     <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
       <section>
-        <h1 className="mb-2 text-2xl font-semibold">{initialMarket.question}</h1>
+        <h1 className="mb-1 text-2xl font-semibold">{initialMarket.question}</h1>
         <p className="mb-4 text-sm text-slate-600">State: {initialMarket.state}</p>
         <dl className="grid gap-2 text-sm text-slate-600">
           <div>
             <dt className="font-medium text-slate-800">Market</dt>
-            <dd>{initialMarket.market_address}</dd>
+            <dd className="break-all font-mono text-xs">{initialMarket.market_address}</dd>
           </div>
           <div>
             <dt className="font-medium text-slate-800">YES spot</dt>

@@ -1,4 +1,13 @@
-import type { BalanceEntry, Market, Order, PlaceOrderRequest } from "./types";
+import type {
+  BalanceEntry,
+  CreateEventContractRequest,
+  CreateEventContractResponse,
+  CreateTokenRequest,
+  CreateTokenResponse,
+  Market,
+  Order,
+  PlaceOrderRequest,
+} from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3001/api";
 
@@ -31,4 +40,14 @@ export const api = {
   cancelOrder: (id: string) =>
     request<Order>(`/orders/${id}/cancel`, { method: "POST" }),
   getBalances: () => request<BalanceEntry[]>("/account/balances"),
+  createToken: (body: CreateTokenRequest) =>
+    request<CreateTokenResponse>("/admin/tokens", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  createEventContract: (body: CreateEventContractRequest) =>
+    request<CreateEventContractResponse>("/admin/event-contracts", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
