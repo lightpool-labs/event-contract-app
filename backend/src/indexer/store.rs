@@ -41,6 +41,7 @@ struct CashToken {
 struct IndexStoreInner {
     markets: HashMap<Uuid, Market>,
     spot_to_market: HashMap<String, SpotMarketRef>,
+    last_trade_price_by_spot: HashMap<String, u64>,
     orders: HashMap<Uuid, StoredOrder>,
     chain_order_index: HashMap<String, Uuid>,
     question_by_hash: HashMap<String, String>,
@@ -124,6 +125,12 @@ impl IndexStore {
 
     pub async fn upsert_market(&self, market: Market) {
         let mut inner = self.inner.write().await;
+        let mut market = market;
+        if let Some(existing) = inner.markets.get(&market.id) {
+            if market.icon_url.is_none() {
+                market.icon_url = existing.icon_url.clone();
+            }
+        }
         inner
             .spot_to_market
             .insert(market.yes_spot_market.clone(), SpotMarketRef {
@@ -150,9 +157,62 @@ impl IndexStore {
 
     pub async fn lookup_spot_market(&self, spot_market: &str) -> Option<(Uuid, String)> {
         let inner = self.inner.read().await;
-        inner.spot_to_market.get(spot_market).map(|spot| {
-            (spot.market_id, spot.outcome.clone())
-        })
+        if let Some(spot) = inner.spot_to_market.get(spot_market) {
+            return Some((spot.market_id, spot.outcome.clone()));
+        }
+        if let Some(key) = contract_key_from_market_ref(spot_market) {
+            if let Some(spot) = inner.spot_to_market.get(&key) {
+                return Some((spot.market_id, spot.outcome.clone()));
+            }
+        }
+        None
+    }
+
+    pub async fn record_last_trade_price(&self, spot_market: &str, price: u64) {
+        let mut inner = self.inner.write().await;
+        inner
+            .last_trade_price_by_spot
+            .insert(spot_market.to_string(), price);
+        if let Some(key) = contract_key_from_market_ref(spot_market) {
+            inner.last_trade_price_by_spot.insert(key, price);
+        }
+    }
+
+    pub async fn last_trade_price(&self, spot_market: &str) -> Option<u64> {
+        let inner = self.inner.read().await;
+        if let Some(price) = inner.last_trade_price_by_spot.get(spot_market) {
+            return Some(*price);
+        }
+        if let Some(key) = contract_key_from_market_ref(spot_market) {
+            return inner.last_trade_price_by_spot.get(&key).copied();
+        }
+        None
+    }
+
+    pub async fn order_cancel_context(
+        &self,
+        order_id: Uuid,
+        user_address: &str,
+    ) -> Option<(Order, String, String)> {
+        let inner = self.inner.read().await;
+        let stored = inner.orders.get(&order_id)?;
+        if !stored.user_address.eq_ignore_ascii_case(user_address) {
+            return None;
+        }
+        if stored.order.status != "open" {
+            return None;
+        }
+        let market = inner.markets.get(&stored.order.market_id)?;
+        let spot_market = if stored.order.outcome == "yes" {
+            market.yes_spot_market.clone()
+        } else {
+            market.no_spot_market.clone()
+        };
+        Some((
+            stored.order.clone(),
+            stored.chain_order_id.clone(),
+            spot_market,
+        ))
     }
 
     pub async fn insert_order(
@@ -219,4 +279,15 @@ pub fn market_uuid(market_address: &str) -> Uuid {
 pub fn question_from_hash(hash: &[u8; 32]) -> String {
     let end = hash.iter().position(|&b| b == 0).unwrap_or(32);
     String::from_utf8_lossy(&hash[..end]).trim().to_string()
+}
+
+fn contract_key_from_market_ref(value: &str) -> Option<String> {
+    let hex_body = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+        .unwrap_or(value);
+    if hex_body.len() < 16 {
+        return None;
+    }
+    Some(format!("0x{}", &hex_body[..16]))
 }

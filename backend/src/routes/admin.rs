@@ -115,10 +115,12 @@ async fn create_event_contract(
 
     state.index.register_question(question).await;
 
+    let icon_url = normalize_icon_url(body.icon_url.as_deref());
     let market_address = result.market_address.to_string();
     let market = Market {
         id: market_uuid(&market_address),
         question: question.to_string(),
+        icon_url: icon_url.clone(),
         market_address: market_address.clone(),
         collateral_token: result.collateral_token.to_string(),
         yes_token: result.yes_token.to_string(),
@@ -134,6 +136,7 @@ async fn create_event_contract(
     Ok(Json(CreateEventContractResponse {
         market_id: market.id,
         question: question.to_string(),
+        icon_url,
         market_address,
         collateral_token: market.collateral_token,
         yes_token: market.yes_token,
@@ -145,4 +148,15 @@ async fn create_event_contract(
         tx_digest: result.tx_digest,
         creator: creator.to_string(),
     }))
+}
+
+fn normalize_icon_url(icon_url: Option<&str>) -> Option<String> {
+    let value = icon_url?.trim();
+    if value.is_empty() {
+        return None;
+    }
+    if value.len() > 500_000 {
+        return None;
+    }
+    Some(value.to_string())
 }

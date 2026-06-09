@@ -13,7 +13,7 @@ use lightpool_sdk::{EventData, EventType, ExecutionStatus, TransactionEvent, Ver
 use lightpool_sdk::lightpool_types::TransactionResult;
 use uuid::Uuid;
 
-use crate::chain::format_token_amount;
+use crate::chain::{format_price_pieces, format_token_amount};
 use crate::models::{Market, Order};
 
 use super::store::{market_uuid, question_from_hash, IndexStore, SharedIndexStore};
@@ -94,6 +94,10 @@ pub async fn process_block(store: &SharedIndexStore, block: VerifiedBlock) {
                 "order_filled" => {
                     if let EventData::Bytes(data) = &event.data {
                         if let Ok(filled) = bincode::deserialize::<OrderFilledEvent>(data) {
+                            let spot_market = filled.market.to_string();
+                            store
+                                .record_last_trade_price(&spot_market, filled.price)
+                                .await;
                             store
                                 .update_order_fill(
                                     &filled.order_id.to_string(),
@@ -279,11 +283,12 @@ fn format_event_detail(event: &TransactionEvent) -> String {
         "order_filled" => {
             if let Ok(e) = bincode::deserialize::<OrderFilledEvent>(bytes) {
                 return format!(
-                    "order_filled: id={} fill={} remaining={} fully_filled={}",
+                    "order_filled: id={} price={} fill={} remaining={} market={}",
                     e.order_id,
+                    format_price_pieces(e.price),
                     format_token_amount(e.fill_amount),
                     format_token_amount(e.remaining_amount),
-                    e.is_fully_filled,
+                    e.market,
                 );
             }
         }
@@ -314,6 +319,7 @@ async fn index_market_created(store: &SharedIndexStore, created: EventContractCr
     let market = Market {
         id: market_uuid(&market_address),
         question,
+        icon_url: None,
         market_address,
         collateral_token: created.collateral_token.to_string(),
         yes_token: created.yes_token.to_string(),
@@ -334,11 +340,11 @@ async fn index_market_created(store: &SharedIndexStore, created: EventContractCr
     store.upsert_market(market).await;
 }
 
-async fn index_order_created(store: &SharedIndexStore, created: OrderCreatedEvent) {
+pub async fn index_order_created(store: &SharedIndexStore, created: OrderCreatedEvent) -> Option<Order> {
     let spot_market = created.market.to_string();
     let Some((market_id, outcome)) = store.lookup_spot_market(&spot_market).await else {
         tracing::debug!(spot_market, "order_created for unknown spot market");
-        return;
+        return None;
     };
 
     let price_raw = match &created.order_type {
@@ -353,15 +359,21 @@ async fn index_order_created(store: &SharedIndexStore, created: OrderCreatedEven
     };
 
     let chain_order_id = created.order_id.to_string();
+    let question = store
+        .get_market(market_id)
+        .await
+        .map(|market| market.question)
+        .unwrap_or_default();
     let order = Order {
         id: Uuid::new_v5(
             &Uuid::NAMESPACE_OID,
             format!("{market_id}:{chain_order_id}").as_bytes(),
         ),
         market_id,
+        question,
         outcome,
         side: side.into(),
-        price: format_token_amount(price_raw),
+        price: format_price_pieces(price_raw),
         size: format_token_amount(created.amount),
         status: "open".into(),
     };
@@ -374,6 +386,13 @@ async fn index_order_created(store: &SharedIndexStore, created: OrderCreatedEven
     );
 
     store
-        .insert_order(order, created.creator.to_string(), chain_order_id, created.amount)
+        .insert_order(
+            order.clone(),
+            created.creator.to_string(),
+            chain_order_id,
+            created.amount,
+        )
         .await;
+
+    Some(order)
 }

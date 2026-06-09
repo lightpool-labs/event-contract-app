@@ -1,10 +1,26 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Debug, Serialize)]
+pub struct BookLevel {
+    pub price: String,
+    pub size: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BookResponse {
+    pub bids: Vec<BookLevel>,
+    pub asks: Vec<BookLevel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_trade_price: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Market {
     pub id: Uuid,
     pub question: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
     pub market_address: String,
     pub collateral_token: String,
     pub yes_token: String,
@@ -19,6 +35,7 @@ pub struct Market {
 pub struct Order {
     pub id: Uuid,
     pub market_id: Uuid,
+    pub question: String,
     pub outcome: String,
     pub side: String,
     pub price: String,
@@ -55,6 +72,7 @@ pub struct CreateTokenResponse {
 #[derive(Debug, Deserialize)]
 pub struct CreateEventContractRequest {
     pub question: String,
+    pub icon_url: Option<String>,
     pub collateral_token: String,
     pub oracle: Option<String>,
     pub resolution_deadline: u64,
@@ -65,10 +83,24 @@ pub struct CreateEventContractRequest {
     pub allow_market_orders: Option<bool>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct MintBurnRequest {
+    pub amount: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MintBurnResponse {
+    pub market_id: Uuid,
+    pub amount: String,
+    pub tx_digest: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct CreateEventContractResponse {
     pub market_id: Uuid,
     pub question: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
     pub market_address: String,
     pub collateral_token: String,
     pub yes_token: String,

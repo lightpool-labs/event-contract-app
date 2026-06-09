@@ -15,17 +15,24 @@ async fn get_balances(State(state): State<AppState>) -> AppResult<Json<Vec<Balan
     let mut entries = Vec::new();
 
     for (symbol, token_str) in state.index.balance_token_specs().await {
+        let is_position = is_position_symbol(&symbol);
+
         let token_contract = match parse_token_contract(&token_str) {
             Ok(contract) => contract,
             Err(e) => {
                 tracing::warn!(symbol = %symbol, token = %token_str, error = %e, "skip balance query");
-                entries.push(zero_balance_entry(symbol, token_str));
+                if !is_position {
+                    entries.push(zero_balance_entry(symbol, token_str));
+                }
                 continue;
             }
         };
 
         match state.chain.get_balance(account, token_contract).await {
             Ok(balance) => {
+                if is_position && balance.total == 0 && balance.locked == 0 {
+                    continue;
+                }
                 entries.push(BalanceEntry {
                     token: token_str,
                     symbol,
@@ -36,12 +43,18 @@ async fn get_balances(State(state): State<AppState>) -> AppResult<Json<Vec<Balan
             }
             Err(e) => {
                 tracing::warn!(symbol = %symbol, error = %e, "get_balance failed, returning zero");
-                entries.push(zero_balance_entry(symbol, token_str));
+                if !is_position {
+                    entries.push(zero_balance_entry(symbol, token_str));
+                }
             }
         }
     }
 
     Ok(Json(entries))
+}
+
+fn is_position_symbol(symbol: &str) -> bool {
+    symbol == "YES" || symbol == "NO"
 }
 
 fn zero_balance_entry(symbol: String, token: String) -> BalanceEntry {

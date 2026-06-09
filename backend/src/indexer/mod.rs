@@ -7,6 +7,7 @@ use lightpool_sdk::{Message, Subscription, WebSocketClient};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+pub use processor::index_order_created;
 pub use store::{
     market_uuid, IndexStore, IndexedBlockHead, SharedIndexStore, SharedIndexedBlockHead, new_head,
 };

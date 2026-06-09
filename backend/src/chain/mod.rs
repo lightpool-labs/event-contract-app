@@ -1,11 +1,15 @@
 use async_trait::async_trait;
 use lightpool_sdk::lightpool_types::call::{GetBalance, GetBalanceParams};
+use lightpool_sdk::lightpool_types::call::{GetMarket, GetMarketInfoParams, GetOrderBook, GetOrderBookParams};
 use lightpool_sdk::lightpool_types::SignedTransaction;
+use lightpool_sdk::spot_events::OrderCreatedEvent;
 use lightpool_sdk::types::SubmitTransactionResponse;
 use lightpool_sdk::{
     extract_event_contract_created_from_events, extract_token_address_from_events, ActionBuilder,
-    Address, ContractAddress, CreateEventContractParams, CreateTokenParams, LightPoolClient,
-    SdkResult, Signer, TransactionBuilder, TOKEN_SCALE,
+    Address, BurnEventContractParams, ContractAddress, CreateEventContractParams, CreateTokenParams,
+    EventData, EventType, CancelOrderParams, LightPoolClient, MintEventContractParams,
+    OrderParamsType, OrderSide, PlaceOrderParams, SdkResult, Signer, TimeInForce,
+    TransactionBuilder, TOKEN_SCALE,
 };
 use std::sync::Arc;
 
@@ -26,6 +30,11 @@ pub struct CreateEventContractResult {
     pub resolution_deadline: u64,
     pub state: String,
     pub tx_digest: String,
+}
+
+pub struct MintBurnResult {
+    pub tx_digest: String,
+    pub amount: u64,
 }
 
 pub struct ChainClient {
@@ -170,6 +179,90 @@ impl ChainClient {
         })
     }
 
+    pub async fn mint_event_contract(
+        &self,
+        signer: &Signer,
+        market_address: ContractAddress,
+        collateral_token: ContractAddress,
+        yes_token: ContractAddress,
+        no_token: ContractAddress,
+        amount: u64,
+    ) -> AppResult<MintBurnResult> {
+        let sender = signer.address();
+        let params = MintEventContractParams {
+            amount,
+            collateral_token,
+            yes_token,
+            no_token,
+        };
+
+        let action = ActionBuilder::mint_event_contract(market_address, params)
+            .map_err(|e| AppError::Internal(format!("build mint_event_contract action: {e}")))?;
+
+        let tx = TransactionBuilder::new()
+            .sender(sender)
+            .expiration(u64::MAX)
+            .add_action(action)
+            .build_and_sign_only(signer)
+            .map_err(|e| AppError::Internal(format!("sign mint_event_contract tx: {e}")))?;
+
+        let response = self.submit_transaction(tx).await?;
+
+        if !response.receipt.is_success() {
+            return Err(AppError::Internal(format!(
+                "mint_event_contract failed: {:?}",
+                response.receipt.status
+            )));
+        }
+
+        Ok(MintBurnResult {
+            tx_digest: response.digest,
+            amount,
+        })
+    }
+
+    pub async fn burn_event_contract(
+        &self,
+        signer: &Signer,
+        market_address: ContractAddress,
+        collateral_token: ContractAddress,
+        yes_token: ContractAddress,
+        no_token: ContractAddress,
+        amount: u64,
+    ) -> AppResult<MintBurnResult> {
+        let sender = signer.address();
+        let params = BurnEventContractParams {
+            amount,
+            collateral_token,
+            yes_token,
+            no_token,
+        };
+
+        let action = ActionBuilder::burn_event_contract(market_address, params)
+            .map_err(|e| AppError::Internal(format!("build burn_event_contract action: {e}")))?;
+
+        let tx = TransactionBuilder::new()
+            .sender(sender)
+            .expiration(u64::MAX)
+            .add_action(action)
+            .build_and_sign_only(signer)
+            .map_err(|e| AppError::Internal(format!("sign burn_event_contract tx: {e}")))?;
+
+        let response = self.submit_transaction(tx).await?;
+
+        if !response.receipt.is_success() {
+            return Err(AppError::Internal(format!(
+                "burn_event_contract failed: {:?}",
+                response.receipt.status
+            )));
+        }
+
+        Ok(MintBurnResult {
+            tx_digest: response.digest,
+            amount,
+        })
+    }
+
     pub async fn get_balance(
         &self,
         account: Address,
@@ -194,6 +287,124 @@ impl ChainClient {
         bincode::deserialize(&bytes)
             .map_err(|e| AppError::Internal(format!("decode GetBalance: {e}")))
     }
+
+    pub async fn place_order(
+        &self,
+        signer: &Signer,
+        spot_market: ContractAddress,
+        params: PlaceOrderParams,
+    ) -> AppResult<SubmitTransactionResponse> {
+        let sender = signer.address();
+
+        let action = ActionBuilder::place_order(spot_market, params)
+            .map_err(|e| AppError::Internal(format!("build place_order action: {e}")))?;
+
+        let tx = TransactionBuilder::new()
+            .sender(sender)
+            .expiration(u64::MAX)
+            .add_action(action)
+            .build_and_sign_only(signer)
+            .map_err(|e| AppError::Internal(format!("sign place_order tx: {e}")))?;
+
+        let response = self.submit_transaction(tx).await?;
+
+        if !response.receipt.is_success() {
+            return Err(AppError::Internal(format!(
+                "place_order failed: {:?}",
+                response.receipt.status
+            )));
+        }
+
+        Ok(response)
+    }
+
+    pub async fn cancel_order(
+        &self,
+        signer: &Signer,
+        spot_market: ContractAddress,
+        order_id: u64,
+    ) -> AppResult<SubmitTransactionResponse> {
+        let sender = signer.address();
+        let params = CancelOrderParams { order_id };
+
+        let action = ActionBuilder::cancel_order(spot_market, params)
+            .map_err(|e| AppError::Internal(format!("build cancel_order action: {e}")))?;
+
+        let tx = TransactionBuilder::new()
+            .sender(sender)
+            .expiration(u64::MAX)
+            .add_action(action)
+            .build_and_sign_only(signer)
+            .map_err(|e| AppError::Internal(format!("sign cancel_order tx: {e}")))?;
+
+        let response = self.submit_transaction(tx).await?;
+
+        if !response.receipt.is_success() {
+            return Err(AppError::Internal(format!(
+                "cancel_order failed: {:?}",
+                response.receipt.status
+            )));
+        }
+
+        Ok(response)
+    }
+
+    pub async fn get_book(
+        &self,
+        account: Address,
+        spot_market: ContractAddress,
+        depth: u32,
+    ) -> AppResult<GetOrderBook> {
+        let action = ActionBuilder::get_orderbook(
+            spot_market,
+            GetOrderBookParams {
+                depth,
+                aggregated: true,
+            },
+        )
+        .map_err(|e| AppError::Internal(format!("build get_book action: {e}")))?;
+
+        let call_tx = TransactionBuilder::new()
+            .account(account)
+            .expiration(u64::MAX)
+            .add_action(action)
+            .build_and_without_sign()
+            .map_err(|e| AppError::Internal(format!("build get_book call tx: {e}")))?;
+
+        let bytes = self
+            .client
+            .call(call_tx)
+            .await
+            .map_err(|e| AppError::Internal(format!("call get_book failed: {e}")))?;
+
+        bincode::deserialize(&bytes)
+            .map_err(|e| AppError::Internal(format!("decode GetOrderBook: {e}")))
+    }
+
+    pub async fn get_market_info(
+        &self,
+        account: Address,
+        spot_market: ContractAddress,
+    ) -> AppResult<GetMarket> {
+        let action = ActionBuilder::get_market_info(spot_market, GetMarketInfoParams {})
+            .map_err(|e| AppError::Internal(format!("build get_market_info action: {e}")))?;
+
+        let call_tx = TransactionBuilder::new()
+            .account(account)
+            .expiration(u64::MAX)
+            .add_action(action)
+            .build_and_without_sign()
+            .map_err(|e| AppError::Internal(format!("build get_market_info call tx: {e}")))?;
+
+        let bytes = self
+            .client
+            .call(call_tx)
+            .await
+            .map_err(|e| AppError::Internal(format!("call get_market_info failed: {e}")))?;
+
+        bincode::deserialize(&bytes)
+            .map_err(|e| AppError::Internal(format!("decode GetMarket: {e}")))
+    }
 }
 
 pub fn format_token_amount(raw: u64) -> String {
@@ -203,6 +414,56 @@ pub fn format_token_amount(raw: u64) -> String {
         return whole.to_string();
     }
     format!("{whole}.{frac:06}", frac = frac)
+}
+
+pub fn format_price_pieces(raw: u64) -> String {
+    ((raw.saturating_mul(100)) / TOKEN_SCALE).to_string()
+}
+
+pub fn parse_price_pieces(price: &str) -> AppResult<u64> {
+    let pieces: u64 = price
+        .trim()
+        .parse()
+        .map_err(|e| AppError::BadRequest(format!("invalid price: {e}")))?;
+    if pieces > 100 {
+        return Err(AppError::BadRequest("price must be between 0 and 100".into()));
+    }
+    Ok((pieces * TOKEN_SCALE) / 100)
+}
+
+pub fn parse_order_size(size: &str) -> AppResult<u64> {
+    let value: f64 = size
+        .trim()
+        .parse()
+        .map_err(|e| AppError::BadRequest(format!("invalid size: {e}")))?;
+    if value <= 0.0 {
+        return Err(AppError::BadRequest("size must be greater than 0".into()));
+    }
+    let raw = (value * TOKEN_SCALE as f64).round() as u64;
+    if raw == 0 {
+        return Err(AppError::BadRequest("size must be greater than 0".into()));
+    }
+    Ok(raw)
+}
+
+pub fn extract_order_created_from_receipt(
+    receipt: &lightpool_sdk::TransactionReceipt,
+) -> Option<OrderCreatedEvent> {
+    for event in &receipt.events {
+        let EventType::Call(action_name) = &event.event_type else {
+            continue;
+        };
+        if action_name.as_str() != "order_created" {
+            continue;
+        }
+        let EventData::Bytes(data) = &event.data else {
+            continue;
+        };
+        if let Ok(created) = bincode::deserialize::<OrderCreatedEvent>(data) {
+            return Some(created);
+        }
+    }
+    None
 }
 
 fn question_hash(question: &str) -> [u8; 32] {
