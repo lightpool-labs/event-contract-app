@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --brand-50: #f0f9ff;
+  --brand-100: #e0f2fe;
+  --brand-500: #0ea5e9;
+  --brand-600: #0284c7;
+  --brand-700: #0369a1;
+}
+
 body {
   font-family: ui-sans-serif, system-ui, sans-serif;
+  background-color: var(--brand-50);
+  color: #0f172a;
 }

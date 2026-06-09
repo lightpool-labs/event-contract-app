@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { api } from "@/lib/api";
 import type { CreateEventContractResponse } from "@/lib/types";
+import { MarketIcon } from "@/components/MarketIcon";
 
 function defaultDeadline(): string {
   const date = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -12,6 +13,7 @@ function defaultDeadline(): string {
 
 export function CreateEventContractForm() {
   const [question, setQuestion] = useState("Will BTC reach 100k by end of 2026?");
+  const [iconUrl, setIconUrl] = useState("");
   const [collateralToken, setCollateralToken] = useState("");
   const [resolutionDeadline, setResolutionDeadline] = useState(defaultDeadline);
   const [tickSize, setTickSize] = useState("0.01");
@@ -50,6 +52,7 @@ export function CreateEventContractForm() {
     try {
       const response = await api.createEventContract({
         question: question.trim(),
+        icon_url: iconUrl.trim() || undefined,
         collateral_token: collateralToken.trim(),
         resolution_deadline: Math.floor(deadlineMs / 1000),
         tick_size: Math.round(tick * 1_000_000),
@@ -84,6 +87,47 @@ export function CreateEventContractForm() {
             className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
             required
           />
+        </div>
+
+        <div>
+          <label htmlFor="iconUrl" className="mb-1 block text-sm font-medium text-slate-700">
+            Market icon
+          </label>
+          <div className="flex items-start gap-3">
+            <MarketIcon iconUrl={iconUrl || null} question={question} size="md" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <input
+                id="iconUrl"
+                type="url"
+                value={iconUrl.startsWith("data:") ? "" : iconUrl}
+                onChange={(e) => setIconUrl(e.target.value)}
+                placeholder="https://example.com/icon.png"
+                className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              />
+              <input
+                id="iconFile"
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) {
+                    return;
+                  }
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    if (typeof reader.result === "string") {
+                      setIconUrl(reader.result);
+                    }
+                  };
+                  reader.readAsDataURL(file);
+                }}
+                className="block w-full text-xs text-slate-600 file:mr-3 file:rounded file:border-0 file:bg-sky-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-sky-700"
+              />
+              <p className="text-xs text-slate-500">
+                Upload an image or paste an icon URL. Shown before the question on market pages.
+              </p>
+            </div>
+          </div>
         </div>
 
         <div>
@@ -211,16 +255,21 @@ export function CreateEventContractForm() {
 
       {result && (
         <div className="mt-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          <p className="font-medium">{result.question}</p>
-          <p className="mt-2 break-all font-mono text-xs">Market: {result.market_address}</p>
-          <p className="mt-1 break-all font-mono text-xs">YES token: {result.yes_token}</p>
-          <p className="mt-1 break-all font-mono text-xs">NO token: {result.no_token}</p>
-          <p className="mt-1 break-all font-mono text-xs">Tx: {result.tx_digest}</p>
-          <p className="mt-2 text-xs">
-            <a href={`/markets/${result.market_id}`} className="underline">
-              View market
-            </a>
-          </p>
+          <div className="flex items-start gap-3">
+            <MarketIcon iconUrl={result.icon_url} question={result.question} size="sm" />
+            <div>
+              <p className="font-medium">{result.question}</p>
+              <p className="mt-2 break-all font-mono text-xs">Market: {result.market_address}</p>
+              <p className="mt-1 break-all font-mono text-xs">YES token: {result.yes_token}</p>
+              <p className="mt-1 break-all font-mono text-xs">NO token: {result.no_token}</p>
+              <p className="mt-1 break-all font-mono text-xs">Tx: {result.tx_digest}</p>
+              <p className="mt-2 text-xs">
+                <a href={`/markets/${result.market_id}`} className="underline">
+                  View market
+                </a>
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>

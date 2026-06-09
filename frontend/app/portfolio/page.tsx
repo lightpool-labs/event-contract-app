@@ -12,7 +12,11 @@ export default async function PortfolioPage() {
     error = e instanceof Error ? e.message : "Failed to load portfolio";
   }
 
-  const positions = balances.filter((b) => b.symbol === "YES" || b.symbol === "NO");
+  const positions = balances.filter(
+    (b) =>
+      (b.symbol === "YES" || b.symbol === "NO") &&
+      (b.total !== "0" || b.locked !== "0"),
+  );
   const total = sumPortfolio(balances);
 
   return (

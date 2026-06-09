@@ -7,12 +7,12 @@ import { CreateTokenForm } from "@/components/CreateTokenForm";
 type Tab = "token" | "market";
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: "token", label: "Create Token" },
   { id: "market", label: "Create Market" },
+  { id: "token", label: "Create Token" },
 ];
 
 function tabHref(tab: Tab) {
-  return tab === "token" ? "/admin" : `/admin?tab=${tab}`;
+  return tab === "market" ? "/admin" : `/admin?tab=${tab}`;
 }
 
 export default function AdminTabs({ activeTab }: { activeTab: Tab }) {
@@ -35,19 +35,19 @@ export default function AdminTabs({ activeTab }: { activeTab: Tab }) {
         ))}
       </div>
 
-      {activeTab === "token" ? (
-        <div>
-          <p className="mb-4 text-sm text-slate-600">
-            Deploy a collateral token on LightPool via the backend agent signer.
-          </p>
-          <CreateTokenForm />
-        </div>
-      ) : (
+      {activeTab === "market" ? (
         <div>
           <p className="mb-4 text-sm text-slate-600">
             Launch a prediction market with YES/NO outcome tokens and spot markets.
           </p>
           <CreateEventContractForm />
+        </div>
+      ) : (
+        <div>
+          <p className="mb-4 text-sm text-slate-600">
+            Deploy a collateral token on LightPool via the backend agent signer.
+          </p>
+          <CreateTokenForm />
         </div>
       )}
     </div>

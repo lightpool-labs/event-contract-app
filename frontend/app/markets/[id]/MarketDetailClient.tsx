@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { MarketOutcomeSelector } from "@/components/MarketOutcomeSelector";
+import { OrderBook } from "@/components/OrderBook";
+import { PlaceOrderPanel } from "@/components/PlaceOrderPanel";
 import { api } from "@/lib/api";
-import type { Market } from "@/lib/types";
+import type { BookResponse, Market } from "@/lib/types";
 
 export default function MarketDetailPage({
   params,
@@ -15,13 +18,53 @@ export default function MarketDetailPage({
   const router = useRouter();
   const [outcome, setOutcome] = useState<"yes" | "no">("yes");
   const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [price, setPrice] = useState("0.50");
-  const [size, setSize] = useState("100");
+  const [orderType, setOrderType] = useState<"limit" | "market">("limit");
+  const [price, setPrice] = useState("50");
+  const [size, setSize] = useState("10");
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [bookRefreshKey, setBookRefreshKey] = useState(0);
+  const [yesBook, setYesBook] = useState<BookResponse | null>(null);
+  const [noBook, setNoBook] = useState<BookResponse | null>(null);
+
+  const loadOutcomeBooks = useCallback(async () => {
+    try {
+      const [yes, no] = await Promise.all([
+        api.getBook(params.id, "yes"),
+        api.getBook(params.id, "no"),
+      ]);
+      setYesBook(yes);
+      setNoBook(no);
+    } catch {
+      setYesBook(null);
+      setNoBook(null);
+    }
+  }, [params.id]);
+
+  useEffect(() => {
+    loadOutcomeBooks();
+  }, [loadOutcomeBooks, bookRefreshKey]);
 
   if (!initialMarket) {
     return <p className="text-sm text-slate-500">Market not found.</p>;
+  }
+
+  function selectBuyYes() {
+    setOutcome("yes");
+    setSide("buy");
+    const ask = yesBook?.asks[0]?.price;
+    if (ask) {
+      setPrice(ask);
+    }
+  }
+
+  function selectBuyNo() {
+    setOutcome("no");
+    setSide("buy");
+    const ask = noBook?.asks[0]?.price;
+    if (ask) {
+      setPrice(ask);
+    }
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -35,8 +78,10 @@ export default function MarketDetailPage({
         side,
         price,
         size,
+        order_type: orderType,
       });
-      setMessage(`Order placed: ${order.id} (${order.status})`);
+      setMessage(`Order placed: ${order.id} (${order.status}).`);
+      setBookRefreshKey((value) => value + 1);
       router.refresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Order failed");
@@ -46,77 +91,41 @@ export default function MarketDetailPage({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-      <section>
-        <h1 className="mb-1 text-2xl font-semibold">{initialMarket.question}</h1>
-        <p className="mb-4 text-sm text-slate-600">State: {initialMarket.state}</p>
-        <dl className="grid gap-2 text-sm text-slate-600">
-          <div>
-            <dt className="font-medium text-slate-800">Market</dt>
-            <dd className="break-all font-mono text-xs">{initialMarket.market_address}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-slate-800">YES spot</dt>
-            <dd>{initialMarket.yes_spot_market}</dd>
-          </div>
-          <div>
-            <dt className="font-medium text-slate-800">NO spot</dt>
-            <dd>{initialMarket.no_spot_market}</dd>
-          </div>
-        </dl>
-      </section>
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="space-y-4">
+        <MarketOutcomeSelector
+          question={initialMarket.question}
+          iconUrl={initialMarket.icon_url}
+          marketAddress={initialMarket.market_address}
+          state={initialMarket.state}
+          yesBook={yesBook}
+          noBook={noBook}
+          selectedOutcome={outcome}
+          onBuyYes={selectBuyYes}
+          onBuyNo={selectBuyNo}
+        />
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-4 font-medium">Place order</h2>
-        <form onSubmit={onSubmit} className="space-y-3">
-          <label className="block text-sm">
-            Outcome
-            <select
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={outcome}
-              onChange={(e) => setOutcome(e.target.value as "yes" | "no")}
-            >
-              <option value="yes">YES</option>
-              <option value="no">NO</option>
-            </select>
-          </label>
-          <label className="block text-sm">
-            Side
-            <select
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={side}
-              onChange={(e) => setSide(e.target.value as "buy" | "sell")}
-            >
-              <option value="buy">Buy</option>
-              <option value="sell">Sell</option>
-            </select>
-          </label>
-          <label className="block text-sm">
-            Price
-            <input
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-            />
-          </label>
-          <label className="block text-sm">
-            Size
-            <input
-              className="mt-1 w-full rounded border px-3 py-2"
-              value={size}
-              onChange={(e) => setSize(e.target.value)}
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded bg-slate-900 px-4 py-2 text-sm text-white disabled:opacity-50"
-          >
-            {loading ? "Submitting..." : "Submit order"}
-          </button>
-        </form>
-        {message && <p className="mt-3 text-sm text-slate-600">{message}</p>}
-      </section>
+        <OrderBook
+          marketId={params.id}
+          outcome={outcome}
+          refreshKey={bookRefreshKey}
+        />
+      </div>
+
+      <PlaceOrderPanel
+        outcome={outcome}
+        side={side}
+        orderType={orderType}
+        price={price}
+        size={size}
+        loading={loading}
+        message={message}
+        onSideChange={setSide}
+        onOrderTypeChange={setOrderType}
+        onPriceChange={setPrice}
+        onSizeChange={setSize}
+        onSubmit={onSubmit}
+      />
     </div>
   );
 }

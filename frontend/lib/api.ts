@@ -1,10 +1,13 @@
 import type {
   BalanceEntry,
+  BookResponse,
   CreateEventContractRequest,
   CreateEventContractResponse,
   CreateTokenRequest,
   CreateTokenResponse,
   Market,
+  MintBurnRequest,
+  MintBurnResponse,
   Order,
   PlaceOrderRequest,
 } from "./types";
@@ -34,6 +37,8 @@ export const api = {
   ready: () => request<{ status: string; node: boolean }>("/ready"),
   listMarkets: () => request<Market[]>("/markets"),
   getMarket: (id: string) => request<Market>(`/markets/${id}`),
+  getBook: (id: string, outcome: "yes" | "no", depth = 10) =>
+    request<BookResponse>(`/markets/${id}/book?outcome=${outcome}&depth=${depth}`),
   listOrders: () => request<Order[]>("/orders"),
   placeOrder: (body: PlaceOrderRequest) =>
     request<Order>("/orders", { method: "POST", body: JSON.stringify(body) }),
@@ -47,6 +52,16 @@ export const api = {
     }),
   createEventContract: (body: CreateEventContractRequest) =>
     request<CreateEventContractResponse>("/admin/event-contracts", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  mintMarket: (marketId: string, body: MintBurnRequest) =>
+    request<MintBurnResponse>(`/markets/${marketId}/mint`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  burnMarket: (marketId: string, body: MintBurnRequest) =>
+    request<MintBurnResponse>(`/markets/${marketId}/burn`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

@@ -1,6 +1,18 @@
+export type BookLevel = {
+  price: string;
+  size: string;
+};
+
+export type BookResponse = {
+  bids: BookLevel[];
+  asks: BookLevel[];
+  last_trade_price?: string | null;
+};
+
 export type Market = {
   id: string;
   question: string;
+  icon_url?: string | null;
   market_address: string;
   collateral_token: string;
   yes_token: string;
@@ -14,6 +26,7 @@ export type Market = {
 export type Order = {
   id: string;
   market_id: string;
+  question: string;
   outcome: string;
   side: string;
   price: string;
@@ -35,6 +48,7 @@ export type PlaceOrderRequest = {
   side: "buy" | "sell";
   price: string;
   size: string;
+  order_type?: "limit" | "market";
 };
 
 export type CreateTokenRequest = {
@@ -54,6 +68,7 @@ export type CreateTokenResponse = {
 
 export type CreateEventContractRequest = {
   question: string;
+  icon_url?: string;
   collateral_token: string;
   oracle?: string;
   resolution_deadline: number;
@@ -64,9 +79,20 @@ export type CreateEventContractRequest = {
   allow_market_orders?: boolean;
 };
 
+export type MintBurnRequest = {
+  amount: string;
+};
+
+export type MintBurnResponse = {
+  market_id: string;
+  amount: string;
+  tx_digest: string;
+};
+
 export type CreateEventContractResponse = {
   market_id: string;
   question: string;
+  icon_url?: string | null;
   market_address: string;
   collateral_token: string;
   yes_token: string;
