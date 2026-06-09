@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crate::chain::{ChainClient, LocalSignerService, SharedSignerService};
 use crate::config::Config;
 use crate::indexer::{IndexStore, SharedIndexStore, SharedIndexedBlockHead, new_head};
-use crate::models::BalanceEntry;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -24,26 +23,5 @@ impl AppState {
             indexed_head: new_head(),
             index: Arc::new(IndexStore::new()),
         }
-    }
-
-    pub fn seed_balance_specs() -> Vec<(&'static str, &'static str)> {
-        vec![
-            ("USDT", "0x0000000000000000"),
-            ("YES", "0x0000000000000000"),
-            ("NO", "0x0000000000000000"),
-        ]
-    }
-
-    pub fn seed_balances() -> Vec<BalanceEntry> {
-        Self::seed_balance_specs()
-            .into_iter()
-            .map(|(symbol, token)| BalanceEntry {
-                token: token.into(),
-                symbol: symbol.into(),
-                total: "0".into(),
-                locked: "0".into(),
-                available: "0".into(),
-            })
-            .collect()
     }
 }

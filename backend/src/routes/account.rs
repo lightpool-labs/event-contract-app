@@ -14,11 +14,11 @@ async fn get_balances(State(state): State<AppState>) -> AppResult<Json<Vec<Balan
     let account = state.signer.user_address().await;
     let mut entries = Vec::new();
 
-    for (symbol, token_str) in AppState::seed_balance_specs() {
-        let token_contract = match parse_token_contract(token_str) {
+    for (symbol, token_str) in state.index.balance_token_specs().await {
+        let token_contract = match parse_token_contract(&token_str) {
             Ok(contract) => contract,
             Err(e) => {
-                tracing::warn!(symbol, token = token_str, error = %e, "skip balance query");
+                tracing::warn!(symbol = %symbol, token = %token_str, error = %e, "skip balance query");
                 entries.push(zero_balance_entry(symbol, token_str));
                 continue;
             }
@@ -27,15 +27,15 @@ async fn get_balances(State(state): State<AppState>) -> AppResult<Json<Vec<Balan
         match state.chain.get_balance(account, token_contract).await {
             Ok(balance) => {
                 entries.push(BalanceEntry {
-                    token: token_str.into(),
-                    symbol: symbol.into(),
+                    token: token_str,
+                    symbol,
                     total: format_token_amount(balance.total),
                     locked: format_token_amount(balance.locked),
                     available: format_token_amount(balance.available),
                 });
             }
             Err(e) => {
-                tracing::warn!(symbol, error = %e, "get_balance failed, returning zero");
+                tracing::warn!(symbol = %symbol, error = %e, "get_balance failed, returning zero");
                 entries.push(zero_balance_entry(symbol, token_str));
             }
         }
@@ -44,10 +44,10 @@ async fn get_balances(State(state): State<AppState>) -> AppResult<Json<Vec<Balan
     Ok(Json(entries))
 }
 
-fn zero_balance_entry(symbol: &str, token: &str) -> BalanceEntry {
+fn zero_balance_entry(symbol: String, token: String) -> BalanceEntry {
     BalanceEntry {
-        token: token.into(),
-        symbol: symbol.into(),
+        token,
+        symbol,
         total: "0".into(),
         locked: "0".into(),
         available: "0".into(),

@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 pub use store::{
-    IndexStore, IndexedBlockHead, SharedIndexStore, SharedIndexedBlockHead, new_head,
+    market_uuid, IndexStore, IndexedBlockHead, SharedIndexStore, SharedIndexedBlockHead, new_head,
 };
 
 use crate::error::{AppError, AppResult};

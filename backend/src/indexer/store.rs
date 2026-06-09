@@ -31,12 +31,20 @@ pub(crate) struct StoredOrder {
     size_raw: u64,
 }
 
+#[derive(Debug, Clone)]
+struct CashToken {
+    symbol: String,
+    address: String,
+}
+
 #[derive(Default)]
 struct IndexStoreInner {
     markets: HashMap<Uuid, Market>,
     spot_to_market: HashMap<String, SpotMarketRef>,
     orders: HashMap<Uuid, StoredOrder>,
     chain_order_index: HashMap<String, Uuid>,
+    question_by_hash: HashMap<String, String>,
+    cash_token: Option<CashToken>,
 }
 
 pub struct IndexStore {
@@ -71,6 +79,47 @@ impl IndexStore {
             .filter(|stored| stored.user_address.eq_ignore_ascii_case(user_address))
             .map(|stored| stored.order.clone())
             .collect()
+    }
+
+    pub async fn register_question(&self, question: &str) {
+        let hash = crate::chain::compute_question_hash(question);
+        let key = hex::encode(hash);
+        self.inner
+            .write()
+            .await
+            .question_by_hash
+            .insert(key, question.to_string());
+    }
+
+    pub async fn question_for_hash(&self, hash: &[u8; 32]) -> Option<String> {
+        let key = hex::encode(hash);
+        self.inner.read().await.question_by_hash.get(&key).cloned()
+    }
+
+    pub async fn set_cash_token(&self, symbol: &str, address: &str) {
+        if !symbol.eq_ignore_ascii_case("USDT") {
+            return;
+        }
+        self.inner.write().await.cash_token = Some(CashToken {
+            symbol: symbol.to_string(),
+            address: address.to_string(),
+        });
+    }
+
+    pub async fn balance_token_specs(&self) -> Vec<(String, String)> {
+        let inner = self.inner.read().await;
+        let mut specs = Vec::new();
+
+        if let Some(cash) = &inner.cash_token {
+            specs.push((cash.symbol.clone(), cash.address.clone()));
+        }
+
+        for market in inner.markets.values() {
+            specs.push(("YES".into(), market.yes_token.clone()));
+            specs.push(("NO".into(), market.no_token.clone()));
+        }
+
+        specs
     }
 
     pub async fn upsert_market(&self, market: Market) {
@@ -168,5 +217,6 @@ pub fn market_uuid(market_address: &str) -> Uuid {
 }
 
 pub fn question_from_hash(hash: &[u8; 32]) -> String {
-    format!("Market 0x{}", hex::encode(&hash[..8]))
+    let end = hash.iter().position(|&b| b == 0).unwrap_or(32);
+    String::from_utf8_lossy(&hash[..end]).trim().to_string()
 }

@@ -1,10 +1,16 @@
 use lightpool_sdk::event_contract_events::{
-    EventContractCreatedEvent, EventContractResolvedEvent,
+    EventContractBurnedEvent, EventContractCreatedEvent, EventContractMintedEvent,
+    EventContractRedeemedEvent, EventContractResolvedEvent,
 };
 use lightpool_sdk::spot_events::{
     OrderCancelledEvent, OrderCreatedEvent, OrderEventType, OrderFilledEvent,
+    parse_spot_event_data,
 };
-use lightpool_sdk::{EventData, EventType, VerifiedBlock};
+use lightpool_sdk::token_events::{
+    TokenCreatedEvent, TokenMintedEvent, TransferEvent, parse_event_data,
+};
+use lightpool_sdk::{EventData, EventType, ExecutionStatus, TransactionEvent, VerifiedBlock};
+use lightpool_sdk::lightpool_types::TransactionResult;
 use uuid::Uuid;
 
 use crate::chain::format_token_amount;
@@ -14,6 +20,8 @@ use super::store::{market_uuid, question_from_hash, IndexStore, SharedIndexStore
 
 pub async fn process_block(store: &SharedIndexStore, block: VerifiedBlock) {
     for tx_result in block.transaction_outputs {
+        log_tx_result(&tx_result);
+
         if !tx_result.is_success() {
             continue;
         }
@@ -23,13 +31,33 @@ pub async fn process_block(store: &SharedIndexStore, block: VerifiedBlock) {
                 continue;
             };
 
+            tracing::info!(action = action_name.as_str(), detail = %format_event_detail(event), "processing tx event");
+
             match action_name.as_str() {
+                "token_created" => {
+                    if let EventData::Bytes(data) = &event.data {
+                        if let Ok(created) = bincode::deserialize::<TokenCreatedEvent>(data) {
+                            store
+                                .set_cash_token(
+                                    created.symbol.as_str(),
+                                    &created.token_address.to_string(),
+                                )
+                                .await;
+                        }
+                    }
+                }
                 "event_contract_created" => {
                     if let EventData::Bytes(data) = &event.data {
-                        if let Ok(created) =
-                            bincode::deserialize::<EventContractCreatedEvent>(data)
-                        {
-                            index_market_created(store, created).await;
+                        match bincode::deserialize::<EventContractCreatedEvent>(data) {
+                            Ok(created) => {
+                                index_market_created(store, created).await;
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    "failed to decode event_contract_created"
+                                );
+                            }
                         }
                     }
                 }
@@ -83,11 +111,209 @@ pub async fn process_block(store: &SharedIndexStore, block: VerifiedBlock) {
     }
 }
 
+fn log_tx_result(tx_result: &TransactionResult) {
+    let digest = hex::encode(tx_result.transaction_digest().as_bytes());
+    let sender = tx_result.sender().to_string();
+    let block_num = tx_result.receipt.block_num;
+
+    match &tx_result.receipt.status {
+        ExecutionStatus::Failure(msg) => {
+            tracing::info!(
+                tx_digest = %digest,
+                block_num,
+                sender = %sender,
+                success = false,
+                error = msg.as_str(),
+                "tx failed"
+            );
+            return;
+        }
+        ExecutionStatus::Success => {}
+    }
+
+    let event_summaries: Vec<String> = tx_result
+        .receipt
+        .events
+        .iter()
+        .map(format_event_detail)
+        .collect();
+
+    tracing::info!(
+        tx_digest = %digest,
+        block_num,
+        sender = %sender,
+        success = true,
+        event_count = event_summaries.len(),
+        events = event_summaries.join(" | "),
+        "tx committed"
+    );
+}
+
+fn event_action_name(event_type: &EventType) -> &str {
+    match event_type {
+        EventType::Call(name) => name.as_str(),
+        EventType::Transfer => "transfer",
+        EventType::System => "system",
+        EventType::Custom(name) => name.as_str(),
+    }
+}
+
+fn format_event_detail(event: &TransactionEvent) -> String {
+    let action = event_action_name(&event.event_type);
+
+    if let Some(data) = parse_event_data(&event.event_type, &event.data) {
+        return format!("{action}: {data}");
+    }
+
+    if let Some(data) = parse_spot_event_data(&event.event_type, &event.data) {
+        return format!("{action}: {data}");
+    }
+
+    let EventData::Bytes(bytes) = &event.data else {
+        return format!("{action}: (no payload)");
+    };
+
+        match action {
+        "event_contract_created" => {
+            if let Ok(e) = bincode::deserialize::<EventContractCreatedEvent>(bytes) {
+                let question = question_from_hash(&e.question_hash);
+                return format!(
+                    "event_contract_created: question={} market={} yes={} no={} collateral={} deadline={} state={}",
+                    question,
+                    e.market_address,
+                    e.yes_token,
+                    e.no_token,
+                    e.collateral_token,
+                    e.resolution_deadline,
+                    e.state,
+                );
+            }
+        }
+        "event_contract_minted" => {
+            if let Ok(e) = bincode::deserialize::<EventContractMintedEvent>(bytes) {
+                return format!(
+                    "event_contract_minted: market={} user={} amount={}",
+                    e.market_address,
+                    e.user,
+                    format_token_amount(e.amount),
+                );
+            }
+        }
+        "event_contract_burned" => {
+            if let Ok(e) = bincode::deserialize::<EventContractBurnedEvent>(bytes) {
+                return format!(
+                    "event_contract_burned: market={} user={} amount={}",
+                    e.market_address,
+                    e.user,
+                    format_token_amount(e.amount),
+                );
+            }
+        }
+        "event_contract_resolved" => {
+            if let Ok(e) = bincode::deserialize::<EventContractResolvedEvent>(bytes) {
+                return format!(
+                    "event_contract_resolved: market={} outcome={}",
+                    e.market_address, e.outcome
+                );
+            }
+        }
+        "event_contract_redeemed" => {
+            if let Ok(e) = bincode::deserialize::<EventContractRedeemedEvent>(bytes) {
+                return format!(
+                    "event_contract_redeemed: market={} user={} amount={}",
+                    e.market_address,
+                    e.user,
+                    format_token_amount(e.amount),
+                );
+            }
+        }
+        "token_created" => {
+            if let Ok(e) = bincode::deserialize::<TokenCreatedEvent>(bytes) {
+                return format!(
+                    "token_created: symbol={} name={} supply={} token={} to={} mintable={}",
+                    e.symbol,
+                    e.name,
+                    format_token_amount(e.total_supply),
+                    e.token_address,
+                    e.to,
+                    e.mintable,
+                );
+            }
+        }
+        "token_minted" => {
+            if let Ok(e) = bincode::deserialize::<TokenMintedEvent>(bytes) {
+                return format!(
+                    "token_minted: token={} amount={} to={}",
+                    e.token_address,
+                    format_token_amount(e.amount),
+                    e.to,
+                );
+            }
+        }
+        "order_created" => {
+            if let Ok(e) = bincode::deserialize::<OrderCreatedEvent>(bytes) {
+                let side = match e.side {
+                    lightpool_sdk::OrderSide::Buy => "buy",
+                    lightpool_sdk::OrderSide::Sell => "sell",
+                };
+                return format!(
+                    "order_created: id={} side={} size={} market={} creator={}",
+                    e.order_id,
+                    side,
+                    format_token_amount(e.amount),
+                    e.market,
+                    e.creator,
+                );
+            }
+        }
+        "order_cancelled" => {
+            if let Ok(e) = bincode::deserialize::<OrderCancelledEvent>(bytes) {
+                return format!(
+                    "order_cancelled: id={} side={:?} amount={}",
+                    e.order_id,
+                    e.side,
+                    format_token_amount(e.cancelled_amount),
+                );
+            }
+        }
+        "order_filled" => {
+            if let Ok(e) = bincode::deserialize::<OrderFilledEvent>(bytes) {
+                return format!(
+                    "order_filled: id={} fill={} remaining={} fully_filled={}",
+                    e.order_id,
+                    format_token_amount(e.fill_amount),
+                    format_token_amount(e.remaining_amount),
+                    e.is_fully_filled,
+                );
+            }
+        }
+        _ => {}
+    }
+
+    if let EventType::Transfer = &event.event_type {
+        if let Ok(e) = bincode::deserialize::<TransferEvent>(bytes) {
+            return format!(
+                "transfer: token={} from={} to={} amount={}",
+                e.token,
+                e.from,
+                e.to,
+                format_token_amount(e.amount),
+            );
+        }
+    }
+
+    format!("{action}: (undecoded)")
+}
+
 async fn index_market_created(store: &SharedIndexStore, created: EventContractCreatedEvent) {
     let market_address = created.market_address.to_string();
+    let question = store
+        .question_for_hash(&created.question_hash)
+        .await
+        .unwrap_or_else(|| question_from_hash(&created.question_hash));
     let market = Market {
         id: market_uuid(&market_address),
-        question: question_from_hash(&created.question_hash),
+        question,
         market_address,
         collateral_token: created.collateral_token.to_string(),
         yes_token: created.yes_token.to_string(),
@@ -101,6 +327,7 @@ async fn index_market_created(store: &SharedIndexStore, created: EventContractCr
     tracing::info!(
         market_id = %market.id,
         question = %market.question,
+        market_address = %market.market_address,
         "indexed event contract market"
     );
 
