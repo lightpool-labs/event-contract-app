@@ -1,6 +1,7 @@
 use async_trait::async_trait;
+use lightpool_sdk::lightpool_types::call::{GetBalance, GetBalanceParams};
 use lightpool_sdk::lightpool_types::SignedTransaction;
-use lightpool_sdk::{Address, LightPoolClient, SdkResult, Signer};
+use lightpool_sdk::{ActionBuilder, Address, ContractAddress, LightPoolClient, SdkResult, Signer, TransactionBuilder, TOKEN_SCALE};
 use std::sync::Arc;
 
 use crate::error::{AppError, AppResult};
@@ -34,6 +35,40 @@ impl ChainClient {
             .map_err(|e| AppError::Internal(format!("submit transaction failed: {e}")))?;
         Ok(())
     }
+
+    pub async fn get_balance(
+        &self,
+        account: Address,
+        token_contract: ContractAddress,
+    ) -> AppResult<GetBalance> {
+        let action = ActionBuilder::get_balance(token_contract, account, GetBalanceParams {})
+            .map_err(|e| AppError::Internal(format!("build get_balance action: {e}")))?;
+
+        let call_tx = TransactionBuilder::new()
+            .account(account)
+            .expiration(u64::MAX)
+            .add_action(action)
+            .build_and_without_sign()
+            .map_err(|e| AppError::Internal(format!("build get_balance call tx: {e}")))?;
+
+        let bytes = self
+            .client
+            .call(call_tx)
+            .await
+            .map_err(|e| AppError::Internal(format!("call get_balance failed: {e}")))?;
+
+        bincode::deserialize(&bytes)
+            .map_err(|e| AppError::Internal(format!("decode GetBalance: {e}")))
+    }
+}
+
+pub fn format_token_amount(raw: u64) -> String {
+    let whole = raw / TOKEN_SCALE;
+    let frac = raw % TOKEN_SCALE;
+    if frac == 0 {
+        return whole.to_string();
+    }
+    format!("{whole}.{frac:06}", frac = frac)
 }
 
 /// Signing abstraction — swap implementation when wallet integration lands.

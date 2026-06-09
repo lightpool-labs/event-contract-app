@@ -3,16 +3,16 @@
 import Link from "next/link";
 import type { BalanceEntry, Order } from "@/lib/types";
 
-type Tab = "assets" | "open" | "history";
+type Tab = "position" | "open" | "history";
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: "assets", label: "Assets" },
+  { id: "position", label: "Position" },
   { id: "open", label: "Open Orders" },
   { id: "history", label: "Order History" },
 ];
 
 function tabHref(tab: Tab) {
-  return tab === "assets" ? "/dashboard" : `/dashboard?tab=${tab}`;
+  return tab === "position" ? "/dashboard" : `/dashboard?tab=${tab}`;
 }
 
 function isActiveTab(current: Tab, tab: Tab) {
@@ -32,6 +32,7 @@ export default function DashboardTabs({
 }) {
   const openOrders = orders.filter((o) => o.status === "open");
   const historyOrders = orders.filter((o) => o.status !== "open");
+  const positions = balances.filter((b) => b.symbol === "YES" || b.symbol === "NO");
 
   return (
     <div>
@@ -58,7 +59,7 @@ export default function DashboardTabs({
         </div>
       )}
 
-      {activeTab === "assets" && (
+      {activeTab === "position" && (
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-100 text-left">
@@ -70,7 +71,7 @@ export default function DashboardTabs({
               </tr>
             </thead>
             <tbody>
-              {balances.map((b) => (
+              {positions.map((b) => (
                 <tr key={b.symbol} className="border-t border-slate-100">
                   <td className="px-4 py-3 font-medium">{b.symbol}</td>
                   <td className="px-4 py-3">{b.total}</td>
@@ -80,8 +81,8 @@ export default function DashboardTabs({
               ))}
             </tbody>
           </table>
-          {!error && balances.length === 0 && (
-            <p className="px-4 py-6 text-sm text-slate-500">No assets yet.</p>
+          {!error && positions.length === 0 && (
+            <p className="px-4 py-6 text-sm text-slate-500">No positions yet.</p>
           )}
         </div>
       )}

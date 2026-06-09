@@ -2,13 +2,13 @@ import { api } from "@/lib/api";
 import type { BalanceEntry, Order } from "@/lib/types";
 import DashboardTabs from "@/components/DashboardTabs";
 
-type Tab = "assets" | "open" | "history";
+type Tab = "position" | "open" | "history";
 
 function parseTab(value?: string): Tab {
   if (value === "open" || value === "history") {
     return value;
   }
-  return "assets";
+  return "position";
 }
 
 export default async function DashboardPage({

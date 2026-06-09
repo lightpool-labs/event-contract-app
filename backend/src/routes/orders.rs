@@ -62,6 +62,7 @@ async fn cancel_order(
     }))
 }
 
-async fn list_orders(State(_state): State<AppState>) -> Json<Vec<Order>> {
-    Json(AppState::seed_orders())
+async fn list_orders(State(state): State<AppState>) -> Json<Vec<Order>> {
+    let user = state.signer.user_address().await;
+    Json(state.index.list_orders_for_user(&user.to_string()).await)
 }

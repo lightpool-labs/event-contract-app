@@ -15,17 +15,18 @@ pub fn router() -> Router<AppState> {
         .route("/:id", get(get_market))
 }
 
-async fn list_markets(State(_state): State<AppState>) -> Json<Vec<Market>> {
-    Json(AppState::seed_markets())
+async fn list_markets(State(state): State<AppState>) -> Json<Vec<Market>> {
+    Json(state.index.list_markets().await)
 }
 
 async fn get_market(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Market>> {
-    AppState::seed_markets()
-        .into_iter()
-        .find(|m| m.id == id)
+    state
+        .index
+        .get_market(id)
+        .await
         .map(Json)
         .ok_or_else(|| AppError::NotFound(format!("market {id} not found")))
 }

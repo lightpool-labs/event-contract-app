@@ -5,7 +5,9 @@ pub struct Config {
     pub host: String,
     pub port: u16,
     pub lightpool_rpc_url: String,
+    pub lightpool_ws_url: String,
     pub database_url: String,
+    pub enable_indexer: bool,
 }
 
 impl Config {
@@ -18,9 +20,15 @@ impl Config {
                 .unwrap_or(3001),
             lightpool_rpc_url: env::var("LIGHTPOOL_RPC_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:26300".into()),
+            lightpool_ws_url: env::var("LIGHTPOOL_WS_URL")
+                .unwrap_or_else(|_| "ws://127.0.0.1:26400".into()),
             database_url: env::var("DATABASE_URL").unwrap_or_else(|_| {
                 "postgres://event_app:event_app@127.0.0.1:5432/event_contract_app".into()
             }),
+            enable_indexer: env::var("ENABLE_INDEXER")
+                .ok()
+                .map(|v| v != "0" && v.to_lowercase() != "false")
+                .unwrap_or(true),
         }
     }
 }
