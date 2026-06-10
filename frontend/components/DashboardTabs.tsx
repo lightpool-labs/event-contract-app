@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
-import type { BalanceEntry, Order } from "@/lib/types";
+import { findPositionMeta, getPositionBalances } from "@/lib/balances";
+import type { BalanceEntry, Event, Order } from "@/lib/types";
 
 type Tab = "position" | "open" | "history";
 
@@ -26,20 +27,23 @@ export default function DashboardTabs({
   activeTab,
   balances,
   orders,
+  events,
   error,
 }: {
   activeTab: Tab;
   balances: BalanceEntry[];
   orders: Order[];
+  events: Event[];
   error: string | null;
 }) {
   const openOrders = orders.filter((o) => o.status === "open");
-  const historyOrders = orders.filter((o) => o.status !== "open");
-  const positions = balances.filter(
-    (b) =>
-      (b.symbol === "YES" || b.symbol === "NO") &&
-      (b.total !== "0" || b.locked !== "0"),
+  const historyOrders = orders.filter(
+    (o) =>
+      o.status === "filled" ||
+      o.status === "cancelled" ||
+      o.status === "partial_filled",
   );
+  const positions = getPositionBalances(balances, events);
 
   return (
     <div>
@@ -71,21 +75,37 @@ export default function DashboardTabs({
           <table className="min-w-full text-sm">
             <thead className="bg-slate-100 text-left">
               <tr>
-                <th className="px-4 py-3">Symbol</th>
+                <th className="px-4 py-3">Outcome</th>
                 <th className="px-4 py-3">Total</th>
                 <th className="px-4 py-3">Locked</th>
                 <th className="px-4 py-3">Available</th>
               </tr>
             </thead>
             <tbody>
-              {positions.map((b) => (
-                <tr key={b.token} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium">{b.symbol}</td>
-                  <td className="px-4 py-3">{b.total}</td>
-                  <td className="px-4 py-3">{b.locked}</td>
-                  <td className="px-4 py-3">{b.available}</td>
-                </tr>
-              ))}
+              {positions.map((b) => {
+                const meta = findPositionMeta(b.token, events);
+
+                return (
+                  <tr key={b.token} className="border-t border-slate-100">
+                    <td className="px-4 py-3">
+                      {meta ? (
+                        <Link
+                          href={`/events/${meta.eventSlug}?outcome=${meta.outcome}`}
+                          className="text-slate-900 hover:underline"
+                        >
+                          {meta.question}{" "}
+                          <span className="font-medium">[{outcomeLabel(meta.outcome)}]</span>
+                        </Link>
+                      ) : (
+                        <span className="font-medium">{b.symbol}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">{b.total}</td>
+                    <td className="px-4 py-3">{b.locked}</td>
+                    <td className="px-4 py-3">{b.available}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {!error && positions.length === 0 && (
@@ -104,7 +124,12 @@ export default function DashboardTabs({
       )}
 
       {activeTab === "history" && (
-        <OrdersTable orders={historyOrders} emptyMessage="No order history." showError={!!error} />
+        <OrdersTable
+          orders={historyOrders}
+          emptyMessage="No order history."
+          showError={!!error}
+          cancelStatuses={["partial_filled"]}
+        />
       )}
     </div>
   );
@@ -120,16 +145,34 @@ function outcomeLabel(outcome: string): string {
   return outcome;
 }
 
+function statusLabel(status: string): string {
+  if (status === "partial_filled") {
+    return "Partial filled";
+  }
+  if (status === "filled") {
+    return "Filled";
+  }
+  if (status === "cancelled") {
+    return "Cancelled";
+  }
+  if (status === "open") {
+    return "Open";
+  }
+  return status;
+}
+
 function OrdersTable({
   orders,
   emptyMessage,
   showError,
   allowCancel = false,
+  cancelStatuses = [],
 }: {
   orders: Order[];
   emptyMessage: string;
   showError: boolean;
   allowCancel?: boolean;
+  cancelStatuses?: string[];
 }) {
   const router = useRouter();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -163,7 +206,7 @@ function OrdersTable({
             <th className="px-4 py-3">Price (¢)</th>
             <th className="px-4 py-3">Size</th>
             <th className="px-4 py-3">Status</th>
-            {allowCancel && <th className="px-4 py-3" />}
+            {(allowCancel || cancelStatuses.length > 0) && <th className="px-4 py-3" />}
           </tr>
         </thead>
         <tbody>
@@ -171,18 +214,18 @@ function OrdersTable({
             <tr key={order.id} className="border-t border-slate-100">
               <td className="px-4 py-3">
                 <Link
-                  href={`/markets/${order.market_id}`}
+                  href={`/events/${order.event_slug || order.market_id}?outcome=${order.outcome}`}
                   className="text-slate-900 hover:underline"
                 >
-                  {order.question || "Unknown market"}{" "}
+                  {order.question || "Unknown event"}{" "}
                   <span className="font-medium">[{outcomeLabel(order.outcome)}]</span>
                 </Link>
               </td>
               <td className="px-4 py-3 capitalize">{order.side}</td>
               <td className="px-4 py-3">{order.price}</td>
               <td className="px-4 py-3">{order.size}</td>
-              <td className="px-4 py-3">{order.status}</td>
-              {allowCancel && (
+              <td className="px-4 py-3">{statusLabel(order.status)}</td>
+              {(allowCancel || cancelStatuses.includes(order.status)) && (
                 <td className="px-4 py-3 text-right">
                   <button
                     type="button"

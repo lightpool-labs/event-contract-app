@@ -2,16 +2,16 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
-import type { Market, MintBurnResponse } from "@/lib/types";
+import type { Event, MintBurnResponse } from "@/lib/types";
 
 type MintBurnMode = "mint" | "burn";
 
 type MintBurnFormProps = {
-  market: Market;
+  event: Event;
   mode: MintBurnMode;
 };
 
-export function MintBurnForm({ market, mode }: MintBurnFormProps) {
+export function MintBurnForm({ event, mode }: MintBurnFormProps) {
   const [amount, setAmount] = useState("10");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,8 +28,8 @@ export function MintBurnForm({ market, mode }: MintBurnFormProps) {
 
     try {
       const response = isMint
-        ? await api.mintMarket(market.id, { amount })
-        : await api.burnMarket(market.id, { amount });
+        ? await api.mintEvent(event.slug, { amount })
+        : await api.burnEvent(event.slug, { amount });
       setResult(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : `${actionLabel} failed`);
@@ -66,16 +66,16 @@ export function MintBurnForm({ market, mode }: MintBurnFormProps) {
         </div>
 
         <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          <p className="break-all font-mono">Market: {market.market_address}</p>
-          <p className="mt-1 break-all font-mono">Collateral: {market.collateral_token}</p>
-          <p className="mt-1 break-all font-mono">YES token: {market.yes_token}</p>
-          <p className="mt-1 break-all font-mono">NO token: {market.no_token}</p>
+          <p className="break-all font-mono">Event: {event.market_address}</p>
+          <p className="mt-1 break-all font-mono">Collateral: {event.collateral_token}</p>
+          <p className="mt-1 break-all font-mono">YES token: {event.yes_token}</p>
+          <p className="mt-1 break-all font-mono">NO token: {event.no_token}</p>
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
         >
           {loading ? `${actionLabel}ing...` : `${actionLabel} complete set`}
         </button>
@@ -93,11 +93,6 @@ export function MintBurnForm({ market, mode }: MintBurnFormProps) {
             {actionLabel}ed {result.amount} complete set(s)
           </p>
           <p className="mt-2 break-all font-mono text-xs">Tx: {result.tx_digest}</p>
-          <p className="mt-2 text-xs">
-            <a href={`/markets/${market.id}`} className="underline">
-              Back to market
-            </a>
-          </p>
         </div>
       )}
     </div>

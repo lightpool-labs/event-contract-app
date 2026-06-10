@@ -1,13 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
-import type { BookLevel, BookResponse } from "@/lib/types";
+import { useMemo } from "react";
+import type { BookLevel, BookResponse, Order } from "@/lib/types";
+import { bookLevelKey, ordersAtBookLevel } from "@/lib/orders";
 
 type OrderBookProps = {
-  marketId: string;
+  book: BookResponse | null;
   outcome: "yes" | "no";
-  refreshKey?: number;
+  openOrders?: Order[];
+  loading?: boolean;
+  error?: string | null;
+  closeAllLoading?: boolean;
+  cancellingLevelKey?: string | null;
+  onCancelLevel?: (orders: Order[]) => void;
+  onCloseAll?: () => void;
 };
 
 function parseLevelSize(size: string): number {
@@ -51,18 +57,50 @@ function formatSpread(bestBid: string | undefined, bestAsk: string | undefined):
   return `${spread.toFixed(0)}¢ spread`;
 }
 
+function CloseOrderButton({
+  disabled,
+  onClick,
+}: {
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label="Cancel order"
+      title="Cancel order"
+      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-300 text-[10px] leading-none text-slate-500 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      ×
+    </button>
+  );
+}
+
 type DepthRowProps = {
   level: BookLevel;
   side: "ask" | "bid";
   maxSize: number;
+  levelOrders: Order[];
+  cancelling: boolean;
+  onCancelLevel?: (orders: Order[]) => void;
 };
 
-function DepthRow({ level, side, maxSize }: DepthRowProps) {
+function DepthRow({
+  level,
+  side,
+  maxSize,
+  levelOrders,
+  cancelling,
+  onCancelLevel,
+}: DepthRowProps) {
   const sizeValue = parseLevelSize(level.size);
   const depthPercent = Math.min(100, (sizeValue / maxSize) * 100);
   const isAsk = side === "ask";
   const barColor = isAsk ? "bg-rose-200" : "bg-emerald-200";
   const textColor = isAsk ? "text-rose-600" : "text-emerald-600";
+  const hasUserOrder = levelOrders.length > 0;
 
   return (
     <tr className="h-6">
@@ -72,6 +110,17 @@ function DepthRow({ level, side, maxSize }: DepthRowProps) {
             className={["absolute inset-y-0 left-0", barColor].join(" ")}
             style={{ width: `${depthPercent}%` }}
           />
+          {hasUserOrder && onCancelLevel && (
+            <div
+              className="absolute inset-y-0 left-0 z-10 flex items-center pl-0.5"
+              style={{ width: `${depthPercent}%` }}
+            >
+              <CloseOrderButton
+                disabled={cancelling}
+                onClick={() => onCancelLevel(levelOrders)}
+              />
+            </div>
+          )}
         </div>
       </td>
       <td className="h-6 p-0 align-middle pl-1 pr-2">
@@ -120,32 +169,21 @@ function SpreadSection({
   );
 }
 
-export function OrderBook({ marketId, outcome, refreshKey = 0 }: OrderBookProps) {
-  const [book, setBook] = useState<BookResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const loadBook = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api.getBook(marketId, outcome);
-      setBook(response);
-    } catch (err) {
-      setBook(null);
-      setError(err instanceof Error ? err.message : "Failed to load order book");
-    } finally {
-      setLoading(false);
-    }
-  }, [marketId, outcome]);
-
-  useEffect(() => {
-    loadBook();
-  }, [loadBook, refreshKey]);
-
+export function OrderBook({
+  book,
+  outcome,
+  openOrders = [],
+  loading = false,
+  error = null,
+  closeAllLoading = false,
+  cancellingLevelKey = null,
+  onCancelLevel,
+  onCloseAll,
+}: OrderBookProps) {
   const asks = useMemo(() => [...(book?.asks ?? [])].reverse(), [book?.asks]);
   const bids = book?.bids ?? [];
   const maxSize = useMemo(() => maxLevelSize([...asks, ...bids]), [asks, bids]);
+  const hasOpenOrders = openOrders.length > 0;
 
   const bestBid = bids[0]?.price;
   const bestAsk = book?.asks[0]?.price;
@@ -157,7 +195,19 @@ export function OrderBook({ marketId, outcome, refreshKey = 0 }: OrderBookProps)
     <thead>
       <tr className="text-left text-xs text-slate-500">
         <th className="w-1/2 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-700">
-          {tradeLabel}
+          <div className="flex items-center gap-2">
+            <span>{tradeLabel}</span>
+            {hasOpenOrders && onCloseAll && (
+              <button
+                type="button"
+                onClick={onCloseAll}
+                disabled={closeAllLoading || cancellingLevelKey !== null}
+                className="rounded border border-slate-300 px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal text-slate-600 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {closeAllLoading ? "Closing..." : "Close all"}
+              </button>
+            )}
+          </div>
         </th>
         <th className="w-[17%] pb-2 font-medium">Price</th>
         <th className="w-[16%] pb-2 text-right font-medium">Size</th>
@@ -181,14 +231,20 @@ export function OrderBook({ marketId, outcome, refreshKey = 0 }: OrderBookProps)
             <table className="w-full table-fixed border-collapse">
               {columnHeaders}
               <tbody>
-                {asks.map((level, index) => (
-                  <DepthRow
-                    key={`ask-${level.price}-${index}`}
-                    level={level}
-                    side="ask"
-                    maxSize={maxSize}
-                  />
-                ))}
+                {asks.map((level, index) => {
+                  const levelOrders = ordersAtBookLevel(openOrders, level.price, "ask");
+                  return (
+                    <DepthRow
+                      key={`ask-${level.price}-${index}`}
+                      level={level}
+                      side="ask"
+                      maxSize={maxSize}
+                      levelOrders={levelOrders}
+                      cancelling={cancellingLevelKey === bookLevelKey("ask", level.price)}
+                      onCancelLevel={onCancelLevel}
+                    />
+                  );
+                })}
                 {asks.length === 0 && (
                   <tr>
                     <td colSpan={4} className="py-2 text-slate-400">
@@ -203,14 +259,20 @@ export function OrderBook({ marketId, outcome, refreshKey = 0 }: OrderBookProps)
 
             <table className="w-full table-fixed border-collapse">
               <tbody>
-                {bids.map((level, index) => (
-                  <DepthRow
-                    key={`bid-${level.price}-${index}`}
-                    level={level}
-                    side="bid"
-                    maxSize={maxSize}
-                  />
-                ))}
+                {bids.map((level, index) => {
+                  const levelOrders = ordersAtBookLevel(openOrders, level.price, "bid");
+                  return (
+                    <DepthRow
+                      key={`bid-${level.price}-${index}`}
+                      level={level}
+                      side="bid"
+                      maxSize={maxSize}
+                      levelOrders={levelOrders}
+                      cancelling={cancellingLevelKey === bookLevelKey("bid", level.price)}
+                      onCancelLevel={onCancelLevel}
+                    />
+                  );
+                })}
                 {bids.length === 0 && (
                   <tr>
                     <td colSpan={4} className="py-2 text-slate-400">

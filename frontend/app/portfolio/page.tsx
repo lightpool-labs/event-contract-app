@@ -1,23 +1,40 @@
-import { api } from "@/lib/api";
-import type { BalanceEntry } from "@/lib/types";
-import { formatUsd, sumPortfolio } from "@/lib/balances";
+import type { BalanceEntry, BookResponse, Event } from "@/lib/types";
+import {
+  findPositionMeta,
+  formatUsd,
+  getPositionBalances,
+  positionUsdValue,
+} from "@/lib/balances";
+import { loadPortfolioSummary } from "@/lib/portfolio";
+
+function outcomeLabel(outcome: string): string {
+  if (outcome === "yes") {
+    return "Yes";
+  }
+  if (outcome === "no") {
+    return "No";
+  }
+  return outcome;
+}
 
 export default async function PortfolioPage() {
   let balances: BalanceEntry[] = [];
+  let events: Event[] = [];
+  let booksBySpotMarket = new Map<string, BookResponse>();
+  let total = 0;
   let error: string | null = null;
 
   try {
-    balances = await api.getBalances();
+    const summary = await loadPortfolioSummary();
+    balances = summary.balances;
+    events = summary.events;
+    booksBySpotMarket = summary.booksBySpotMarket;
+    total = summary.portfolio;
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to load portfolio";
   }
 
-  const positions = balances.filter(
-    (b) =>
-      (b.symbol === "YES" || b.symbol === "NO") &&
-      (b.total !== "0" || b.locked !== "0"),
-  );
-  const total = sumPortfolio(balances);
+  const positions = getPositionBalances(balances, events);
 
   return (
     <div>
@@ -33,21 +50,37 @@ export default async function PortfolioPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-slate-100 text-left">
             <tr>
-              <th className="px-4 py-3">Symbol</th>
-              <th className="px-4 py-3">Total</th>
+              <th className="px-4 py-3">Outcome</th>
+              <th className="px-4 py-3">Shares</th>
+              <th className="px-4 py-3">Value</th>
               <th className="px-4 py-3">Locked</th>
               <th className="px-4 py-3">Available</th>
             </tr>
           </thead>
           <tbody>
-            {positions.map((b) => (
-              <tr key={b.token} className="border-t border-slate-100">
-                <td className="px-4 py-3 font-medium">{b.symbol}</td>
-                <td className="px-4 py-3">{b.total}</td>
-                <td className="px-4 py-3">{b.locked}</td>
-                <td className="px-4 py-3">{b.available}</td>
-              </tr>
-            ))}
+            {positions.map((balance) => {
+              const meta = findPositionMeta(balance.token, events);
+              const value = positionUsdValue(balance, events, booksBySpotMarket);
+
+              return (
+                <tr key={balance.token} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-medium">
+                    {meta ? (
+                      <>
+                        {meta.question}{" "}
+                        <span>[{outcomeLabel(meta.outcome)}]</span>
+                      </>
+                    ) : (
+                      balance.symbol
+                    )}
+                  </td>
+                  <td className="px-4 py-3">{balance.total}</td>
+                  <td className="px-4 py-3">${formatUsd(value)}</td>
+                  <td className="px-4 py-3">{balance.locked}</td>
+                  <td className="px-4 py-3">{balance.available}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         {!error && positions.length === 0 && (

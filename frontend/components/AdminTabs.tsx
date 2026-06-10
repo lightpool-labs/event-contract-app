@@ -4,15 +4,15 @@ import Link from "next/link";
 import { CreateEventContractForm } from "@/components/CreateEventContractForm";
 import { CreateTokenForm } from "@/components/CreateTokenForm";
 
-type Tab = "token" | "market";
+type Tab = "token" | "event";
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: "market", label: "Create Market" },
+  { id: "event", label: "Create Event" },
   { id: "token", label: "Create Token" },
 ];
 
 function tabHref(tab: Tab) {
-  return tab === "market" ? "/admin" : `/admin?tab=${tab}`;
+  return tab === "event" ? "/admin" : `/admin?tab=${tab}`;
 }
 
 export default function AdminTabs({ activeTab }: { activeTab: Tab }) {
@@ -35,10 +35,10 @@ export default function AdminTabs({ activeTab }: { activeTab: Tab }) {
         ))}
       </div>
 
-      {activeTab === "market" ? (
+      {activeTab === "event" ? (
         <div>
           <p className="mb-4 text-sm text-slate-600">
-            Launch a prediction market with YES/NO outcome tokens and spot markets.
+            Launch a prediction event with YES/NO outcome tokens and spot markets.
           </p>
           <CreateEventContractForm />
         </div>

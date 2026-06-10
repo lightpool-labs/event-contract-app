@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { CreateEventContractResponse } from "@/lib/types";
+import type { CashToken, CreateEventContractResponse } from "@/lib/types";
 import { MarketIcon } from "@/components/MarketIcon";
 
 function defaultDeadline(): string {
@@ -14,6 +14,8 @@ function defaultDeadline(): string {
 export function CreateEventContractForm() {
   const [question, setQuestion] = useState("Will BTC reach 100k by end of 2026?");
   const [iconUrl, setIconUrl] = useState("");
+  const [cashToken, setCashToken] = useState<CashToken | null>(null);
+  const [cashTokenLoading, setCashTokenLoading] = useState(true);
   const [collateralToken, setCollateralToken] = useState("");
   const [resolutionDeadline, setResolutionDeadline] = useState(defaultDeadline);
   const [tickSize, setTickSize] = useState("0.01");
@@ -24,6 +26,33 @@ export function CreateEventContractForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<CreateEventContractResponse | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadCashToken() {
+      try {
+        const token = await api.getCashToken();
+        if (active) {
+          setCashToken(token);
+        }
+      } catch {
+        if (active) {
+          setCashToken(null);
+        }
+      } finally {
+        if (active) {
+          setCashTokenLoading(false);
+        }
+      }
+    }
+
+    void loadCashToken();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,7 +72,7 @@ export function CreateEventContractForm() {
     const makerFee = Number(makerFeeBps);
     const takerFee = Number(takerFeeBps);
 
-    if (!collateralToken.trim()) {
+    if (!cashToken && !collateralToken.trim()) {
       setError("Collateral token address is required.");
       setLoading(false);
       return;
@@ -53,7 +82,7 @@ export function CreateEventContractForm() {
       const response = await api.createEventContract({
         question: question.trim(),
         icon_url: iconUrl.trim() || undefined,
-        collateral_token: collateralToken.trim(),
+        collateral_token: cashToken ? undefined : collateralToken.trim(),
         resolution_deadline: Math.floor(deadlineMs / 1000),
         tick_size: Math.round(tick * 1_000_000),
         min_order_size: Math.round(minSize * 1_000_000),
@@ -62,6 +91,11 @@ export function CreateEventContractForm() {
         allow_market_orders: allowMarketOrders,
       });
       setResult(response);
+      if (!cashToken) {
+        const token = await api.getCashToken();
+        setCashToken(token);
+        setCollateralToken("");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create event contract");
     } finally {
@@ -124,32 +158,47 @@ export function CreateEventContractForm() {
                 className="block w-full text-xs text-slate-600 file:mr-3 file:rounded file:border-0 file:bg-sky-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-sky-700"
               />
               <p className="text-xs text-slate-500">
-                Upload an image or paste an icon URL. Shown before the question on market pages.
+                Upload an image or paste an icon URL. Shown before the question on event pages.
               </p>
             </div>
           </div>
         </div>
 
         <div>
-          <label
-            htmlFor="collateralToken"
-            className="mb-1 block text-sm font-medium text-slate-700"
-          >
-            Collateral token address
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Collateral token
           </label>
-          <input
-            id="collateralToken"
-            type="text"
-            value={collateralToken}
-            onChange={(e) => setCollateralToken(e.target.value)}
-            placeholder="0x0200000000000007 or 7"
-            className="w-full rounded border border-slate-300 px-3 py-2 font-mono text-xs"
-            required
-          />
-          <p className="mt-1 text-xs text-slate-500">
-            Paste the full token contract from Create Token (e.g. 0x0200000000000007), or use the
-            token index (e.g. 7).
-          </p>
+          {cashTokenLoading ? (
+            <p className="text-sm text-slate-500">Loading cash token...</p>
+          ) : cashToken ? (
+            <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2">
+              <p className="text-sm font-medium text-slate-900">
+                Cash token ({cashToken.symbol})
+              </p>
+              <p className="mt-1 break-all font-mono text-xs text-slate-600">
+                {cashToken.address}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                New events use the configured cash token as collateral.
+              </p>
+            </div>
+          ) : (
+            <>
+              <input
+                id="collateralToken"
+                type="text"
+                value={collateralToken}
+                onChange={(e) => setCollateralToken(e.target.value)}
+                placeholder="0x0200000000000007 or 7"
+                className="w-full rounded border border-slate-300 px-3 py-2 font-mono text-xs"
+                required
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Enter the collateral token address once. It will be saved as the cash token for
+                future events.
+              </p>
+            </>
+          )}
         </div>
 
         <div>
@@ -240,8 +289,8 @@ export function CreateEventContractForm() {
 
         <button
           type="submit"
-          disabled={loading}
-          className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          disabled={loading || cashTokenLoading}
+          className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
         >
           {loading ? "Creating..." : "Create event contract"}
         </button>
@@ -264,8 +313,8 @@ export function CreateEventContractForm() {
               <p className="mt-1 break-all font-mono text-xs">NO token: {result.no_token}</p>
               <p className="mt-1 break-all font-mono text-xs">Tx: {result.tx_digest}</p>
               <p className="mt-2 text-xs">
-                <a href={`/markets/${result.market_id}`} className="underline">
-                  View market
+                <a href={`/events/${result.slug}`} className="underline">
+                  View event
                 </a>
               </p>
             </div>

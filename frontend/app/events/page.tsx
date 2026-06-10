@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function MarketsRedirectPage() {
+export default function EventsRedirectPage() {
   redirect("/");
 }

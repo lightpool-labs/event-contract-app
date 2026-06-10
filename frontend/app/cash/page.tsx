@@ -1,19 +1,23 @@
 import { api } from "@/lib/api";
 import type { BalanceEntry } from "@/lib/types";
+import type { Event } from "@/lib/types";
 import { formatUsd, sumCash } from "@/lib/balances";
 
 export default async function CashPage() {
   let balances: BalanceEntry[] = [];
+  let events: Event[] = [];
   let error: string | null = null;
 
   try {
-    balances = await api.getBalances();
+    [balances, events] = await Promise.all([api.getBalances(), api.listEvents()]);
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to load cash balance";
   }
 
-  const cashBalances = balances.filter((b) => b.symbol === "USDT");
-  const total = sumCash(balances);
+  const total = sumCash(balances, events);
+  const cashBalances = balances.filter(
+    (balance) => balance.symbol !== "YES" && balance.symbol !== "NO",
+  );
 
   return (
     <div>

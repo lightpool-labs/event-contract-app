@@ -1,5 +1,5 @@
 import { api } from "@/lib/api";
-import type { BalanceEntry, Order } from "@/lib/types";
+import type { BalanceEntry, Event, Order } from "@/lib/types";
 import DashboardTabs from "@/components/DashboardTabs";
 
 type Tab = "position" | "open" | "history";
@@ -18,10 +18,15 @@ export default async function DashboardPage({
 }) {
   let balances: BalanceEntry[] = [];
   let orders: Order[] = [];
+  let events: Event[] = [];
   let error: string | null = null;
 
   try {
-    [balances, orders] = await Promise.all([api.getBalances(), api.listOrders()]);
+    [balances, orders, events] = await Promise.all([
+      api.getBalances(),
+      api.listOrders(),
+      api.listEvents(),
+    ]);
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to load dashboard data";
   }
@@ -31,6 +36,7 @@ export default async function DashboardPage({
       activeTab={parseTab(searchParams.tab)}
       balances={balances}
       orders={orders}
+      events={events}
       error={error}
     />
   );

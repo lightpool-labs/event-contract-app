@@ -4,13 +4,15 @@ export type BookLevel = {
 };
 
 export type BookResponse = {
+  sequence: number;
   bids: BookLevel[];
   asks: BookLevel[];
   last_trade_price?: string | null;
 };
 
-export type Market = {
+export type Event = {
   id: string;
+  slug: string;
   question: string;
   icon_url?: string | null;
   market_address: string;
@@ -26,6 +28,7 @@ export type Market = {
 export type Order = {
   id: string;
   market_id: string;
+  event_slug: string;
   question: string;
   outcome: string;
   side: string;
@@ -43,7 +46,7 @@ export type BalanceEntry = {
 };
 
 export type PlaceOrderRequest = {
-  market_id: string;
+  event_slug: string;
   outcome: "yes" | "no";
   side: "buy" | "sell";
   price: string;
@@ -66,10 +69,15 @@ export type CreateTokenResponse = {
   creator: string;
 };
 
+export type CashToken = {
+  symbol: string;
+  address: string;
+};
+
 export type CreateEventContractRequest = {
   question: string;
   icon_url?: string;
-  collateral_token: string;
+  collateral_token?: string;
   oracle?: string;
   resolution_deadline: number;
   tick_size?: number;
@@ -84,13 +92,14 @@ export type MintBurnRequest = {
 };
 
 export type MintBurnResponse = {
-  market_id: string;
+  slug: string;
   amount: string;
   tx_digest: string;
 };
 
 export type CreateEventContractResponse = {
   market_id: string;
+  slug: string;
   question: string;
   icon_url?: string | null;
   market_address: string;

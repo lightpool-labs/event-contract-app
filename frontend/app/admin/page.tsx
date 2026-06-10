@@ -1,12 +1,12 @@
 import AdminTabs from "@/components/AdminTabs";
 
-type Tab = "token" | "market";
+type Tab = "token" | "event";
 
 function parseTab(value?: string): Tab {
   if (value === "token") {
     return value;
   }
-  return "market";
+  return "event";
 }
 
 export default function AdminPage({
