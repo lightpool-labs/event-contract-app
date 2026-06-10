@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{BalanceEntry, BookResponse, Market, Order};
+use crate::models::{BalanceEntry, Market, Order};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BalanceTokenSpec {
@@ -171,18 +171,6 @@ impl ClobIndexClient {
     pub async fn position_token_specs(&self) -> AppResult<Vec<BalanceTokenSpec>> {
         self.get_json("/api/markets/index/position-token-specs")
             .await
-    }
-
-    pub async fn get_book(
-        &self,
-        account: &str,
-        spot_market: &str,
-        depth: u32,
-    ) -> AppResult<BookResponse> {
-        self.get_json(&format!(
-            "/api/spot/{spot_market}/book?account={account}&depth={depth}"
-        ))
-        .await
     }
 
     pub async fn get_balances(

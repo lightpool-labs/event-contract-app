@@ -1,29 +1,21 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     routing::{get, post},
     Json, Router,
 };
 use lightpool_sdk::parse_token_contract;
-use serde::Deserialize;
 
 use crate::chain::{format_token_amount, parse_order_size};
 use crate::error::{AppError, AppResult};
-use crate::models::{BookResponse, Market, MintBurnRequest, MintBurnResponse};
+use crate::models::{Market, MintBurnRequest, MintBurnResponse};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_events))
-        .route("/:slug/book", get(get_book))
         .route("/:slug/mint", post(mint_event))
         .route("/:slug/burn", post(burn_event))
         .route("/:slug", get(get_event))
-}
-
-#[derive(Debug, Deserialize)]
-pub struct BookQuery {
-    pub outcome: Option<String>,
-    pub depth: Option<u32>,
 }
 
 async fn resolve_event(state: &AppState, slug: &str) -> AppResult<Market> {
@@ -43,35 +35,6 @@ async fn get_event(
     Path(slug): Path<String>,
 ) -> AppResult<Json<Market>> {
     resolve_event(&state, &slug).await.map(Json)
-}
-
-async fn get_book(
-    State(state): State<AppState>,
-    Path(slug): Path<String>,
-    Query(query): Query<BookQuery>,
-) -> AppResult<Json<BookResponse>> {
-    let outcome = query.outcome.as_deref().unwrap_or("yes");
-    if outcome != "yes" && outcome != "no" {
-        return Err(AppError::BadRequest("outcome must be yes or no".into()));
-    }
-
-    let market = resolve_event(&state, &slug).await?;
-
-    let spot_market_str = if outcome == "yes" {
-        &market.yes_spot_market
-    } else {
-        &market.no_spot_market
-    };
-
-    let account = state.signer.user_address().await.to_string();
-    let depth = query.depth.unwrap_or(10);
-
-    let book = state
-        .clob
-        .get_book(&account, spot_market_str, depth)
-        .await?;
-
-    Ok(Json(book))
 }
 
 async fn mint_event(

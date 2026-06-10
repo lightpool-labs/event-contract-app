@@ -46,13 +46,11 @@ impl CashTokenStore {
         }
     }
 
-    pub async fn set(&self, symbol: &str, address: &str) {
-        if !symbol.eq_ignore_ascii_case("USDT") {
-            return;
-        }
+    pub async fn set(&self, symbol: impl Into<String>, address: &str) {
+        let symbol = symbol.into();
         tracing::info!(symbol = %symbol, address = %address, "updated cash token in memory");
         self.inner.write().await.token = Some(CashToken {
-            symbol: symbol.to_string(),
+            symbol,
             address: address.to_string(),
         });
     }

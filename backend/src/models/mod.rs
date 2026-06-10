@@ -1,20 +1,6 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BookLevel {
-    pub price: String,
-    pub size: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BookResponse {
-    pub bids: Vec<BookLevel>,
-    pub asks: Vec<BookLevel>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_trade_price: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Market {
     pub id: Uuid,
@@ -76,7 +62,7 @@ pub struct CreateTokenResponse {
 pub struct CreateEventContractRequest {
     pub question: String,
     pub icon_url: Option<String>,
-    pub collateral_token: String,
+    pub collateral_token: Option<String>,
     pub oracle: Option<String>,
     pub resolution_deadline: u64,
     pub tick_size: Option<u64>,

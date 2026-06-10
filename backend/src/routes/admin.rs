@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
-use axum::{extract::State, routing::post, Json, Router};
+use axum::{extract::State, routing::{get, post}, Json, Router};
+use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
 use crate::chain::market_uuid;
@@ -11,10 +12,24 @@ use crate::models::{
 use crate::state::AppState;
 use lightpool_sdk::{parse_token_contract, Address};
 
+#[derive(Debug, Serialize)]
+struct CashTokenResponse {
+    symbol: String,
+    address: String,
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/cash-token", get(get_cash_token))
         .route("/tokens", post(create_token))
         .route("/event-contracts", post(create_event_contract))
+}
+
+async fn get_cash_token(State(state): State<AppState>) -> Json<Option<CashTokenResponse>> {
+    Json(state.cash_token.get().await.map(|token| CashTokenResponse {
+        symbol: token.symbol,
+        address: token.address,
+    }))
 }
 
 async fn create_token(
@@ -75,8 +90,8 @@ async fn create_event_contract(
         return Err(AppError::BadRequest("resolution_deadline is required".into()));
     }
 
-    let collateral_token = parse_token_contract(body.collateral_token.trim())
-        .map_err(|e| AppError::BadRequest(format!("invalid collateral_token: {e}")))?;
+    let had_cash_token = state.cash_token.get().await.is_some();
+    let collateral_token = resolve_collateral_token(&state, body.collateral_token.as_deref()).await?;
 
     let signer = state
         .signer
@@ -120,6 +135,16 @@ async fn create_event_contract(
         )
         .await?;
 
+    if !had_cash_token {
+        state
+            .cash_token
+            .set(
+                &state.config.cash_token_symbol,
+                &result.collateral_token.to_string(),
+            )
+            .await;
+    }
+
     let market_address = result.market_address.to_string();
     let market = Market {
         id: market_uuid(&market_address),
@@ -152,6 +177,25 @@ async fn create_event_contract(
         tx_digest: result.tx_digest,
         creator: creator.to_string(),
     }))
+}
+
+async fn resolve_collateral_token(
+    state: &AppState,
+    collateral_token: Option<&str>,
+) -> AppResult<lightpool_sdk::ContractAddress> {
+    if let Some(cash) = state.cash_token.get().await {
+        return parse_token_contract(cash.address.trim())
+            .map_err(|e| AppError::BadRequest(format!("invalid cash token address: {e}")));
+    }
+
+    let Some(value) = collateral_token.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Err(AppError::BadRequest(
+            "collateral_token is required before cash token is configured".into(),
+        ));
+    };
+
+    parse_token_contract(value)
+        .map_err(|e| AppError::BadRequest(format!("invalid collateral_token: {e}")))
 }
 
 fn normalize_icon_url(icon_url: Option<&str>) -> Option<String> {
