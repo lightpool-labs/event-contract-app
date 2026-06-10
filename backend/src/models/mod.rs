@@ -1,13 +1,13 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BookLevel {
     pub price: String,
     pub size: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BookResponse {
     pub bids: Vec<BookLevel>,
     pub asks: Vec<BookLevel>,
@@ -18,6 +18,7 @@ pub struct BookResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Market {
     pub id: Uuid,
+    pub slug: String,
     pub question: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon_url: Option<String>,
@@ -35,6 +36,8 @@ pub struct Market {
 pub struct Order {
     pub id: Uuid,
     pub market_id: Uuid,
+    #[serde(default)]
+    pub event_slug: String,
     pub question: String,
     pub outcome: String,
     pub side: String,
@@ -90,7 +93,7 @@ pub struct MintBurnRequest {
 
 #[derive(Debug, Serialize)]
 pub struct MintBurnResponse {
-    pub market_id: Uuid,
+    pub slug: String,
     pub amount: String,
     pub tx_digest: String,
 }
@@ -98,6 +101,7 @@ pub struct MintBurnResponse {
 #[derive(Debug, Serialize)]
 pub struct CreateEventContractResponse {
     pub market_id: Uuid,
+    pub slug: String,
     pub question: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon_url: Option<String>,

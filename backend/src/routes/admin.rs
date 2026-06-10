@@ -3,7 +3,7 @@ use std::str::FromStr;
 use axum::{extract::State, routing::post, Json, Router};
 
 use crate::error::{AppError, AppResult};
-use crate::indexer::market_uuid;
+use crate::chain::market_uuid;
 use crate::models::{
     CreateEventContractRequest, CreateEventContractResponse, CreateTokenRequest,
     CreateTokenResponse, Market,
@@ -50,8 +50,8 @@ async fn create_token(
 
     let token_address = result.token_address.to_string();
     state
-        .index
-        .set_cash_token(symbol, &token_address)
+        .cash_token
+        .set(symbol, &token_address)
         .await;
 
     Ok(Json(CreateTokenResponse {
@@ -97,6 +97,13 @@ async fn create_event_contract(
     let taker_fee_bps = body.taker_fee_bps.unwrap_or(20);
     let allow_market_orders = body.allow_market_orders.unwrap_or(true);
 
+    let icon_url = normalize_icon_url(body.icon_url.as_deref());
+    let slug = state.clob.allocate_slug(question).await?;
+    state
+        .clob
+        .register_question(question, &slug, icon_url.as_deref())
+        .await?;
+
     let result = state
         .chain
         .create_event_contract(
@@ -113,12 +120,10 @@ async fn create_event_contract(
         )
         .await?;
 
-    state.index.register_question(question).await;
-
-    let icon_url = normalize_icon_url(body.icon_url.as_deref());
     let market_address = result.market_address.to_string();
     let market = Market {
         id: market_uuid(&market_address),
+        slug: slug.clone(),
         question: question.to_string(),
         icon_url: icon_url.clone(),
         market_address: market_address.clone(),
@@ -131,10 +136,9 @@ async fn create_event_contract(
         resolution_deadline: result.resolution_deadline,
     };
 
-    state.index.upsert_market(market.clone()).await;
-
     Ok(Json(CreateEventContractResponse {
         market_id: market.id,
+        slug: market.slug.clone(),
         question: question.to_string(),
         icon_url,
         market_address,

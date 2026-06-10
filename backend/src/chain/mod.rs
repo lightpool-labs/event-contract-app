@@ -1,18 +1,18 @@
 use async_trait::async_trait;
-use lightpool_sdk::lightpool_types::call::{GetBalance, GetBalanceParams};
-use lightpool_sdk::lightpool_types::call::{GetMarket, GetMarketInfoParams, GetOrderBook, GetOrderBookParams};
-use lightpool_sdk::lightpool_types::SignedTransaction;
 use lightpool_sdk::spot_events::OrderCreatedEvent;
 use lightpool_sdk::types::SubmitTransactionResponse;
 use lightpool_sdk::{
     extract_event_contract_created_from_events, extract_token_address_from_events, ActionBuilder,
     Address, BurnEventContractParams, ContractAddress, CreateEventContractParams, CreateTokenParams,
-    EventData, EventType, CancelOrderParams, LightPoolClient, MintEventContractParams,
-    OrderParamsType, OrderSide, PlaceOrderParams, SdkResult, Signer, TimeInForce,
+    EventData, EventType, CancelOrderParams, MintEventContractParams,
+    PlaceOrderParams, SdkResult, Signer,
     TransactionBuilder, TOKEN_SCALE,
 };
 use std::sync::Arc;
+use uuid::Uuid;
 
+use crate::clob::ClobIndexClient;
+use crate::config::Config;
 use crate::error::{AppError, AppResult};
 
 pub struct CreateTokenResult {
@@ -38,32 +38,19 @@ pub struct MintBurnResult {
 }
 
 pub struct ChainClient {
-    client: LightPoolClient,
+    clob: Arc<ClobIndexClient>,
 }
 
 impl ChainClient {
-    pub fn new(rpc_url: &str) -> Self {
-        Self {
-            client: LightPoolClient::new(rpc_url),
-        }
+    pub fn new(clob: Arc<ClobIndexClient>) -> Self {
+        Self { clob }
     }
 
-    pub fn client(&self) -> &LightPoolClient {
-        &self.client
-    }
-
-    pub async fn health_check(&self) -> AppResult<bool> {
-        self.client
-            .health_check()
-            .await
-            .map_err(|e| AppError::Internal(format!("node health check failed: {e}")))
-    }
-
-    pub async fn submit_transaction(&self, tx: SignedTransaction) -> AppResult<SubmitTransactionResponse> {
-        self.client
-            .submit_transaction(tx)
-            .await
-            .map_err(|e| AppError::Internal(format!("submit transaction failed: {e}")))
+    pub async fn submit_transaction(
+        &self,
+        tx: lightpool_sdk::lightpool_types::SignedTransaction,
+    ) -> AppResult<SubmitTransactionResponse> {
+        self.clob.submit_transaction(tx).await
     }
 
     pub async fn create_token(
@@ -263,31 +250,6 @@ impl ChainClient {
         })
     }
 
-    pub async fn get_balance(
-        &self,
-        account: Address,
-        token_contract: ContractAddress,
-    ) -> AppResult<GetBalance> {
-        let action = ActionBuilder::get_balance(token_contract, account, GetBalanceParams {})
-            .map_err(|e| AppError::Internal(format!("build get_balance action: {e}")))?;
-
-        let call_tx = TransactionBuilder::new()
-            .account(account)
-            .expiration(u64::MAX)
-            .add_action(action)
-            .build_and_without_sign()
-            .map_err(|e| AppError::Internal(format!("build get_balance call tx: {e}")))?;
-
-        let bytes = self
-            .client
-            .call(call_tx)
-            .await
-            .map_err(|e| AppError::Internal(format!("call get_balance failed: {e}")))?;
-
-        bincode::deserialize(&bytes)
-            .map_err(|e| AppError::Internal(format!("decode GetBalance: {e}")))
-    }
-
     pub async fn place_order(
         &self,
         signer: &Signer,
@@ -347,63 +309,6 @@ impl ChainClient {
         }
 
         Ok(response)
-    }
-
-    pub async fn get_book(
-        &self,
-        account: Address,
-        spot_market: ContractAddress,
-        depth: u32,
-    ) -> AppResult<GetOrderBook> {
-        let action = ActionBuilder::get_orderbook(
-            spot_market,
-            GetOrderBookParams {
-                depth,
-                aggregated: true,
-            },
-        )
-        .map_err(|e| AppError::Internal(format!("build get_book action: {e}")))?;
-
-        let call_tx = TransactionBuilder::new()
-            .account(account)
-            .expiration(u64::MAX)
-            .add_action(action)
-            .build_and_without_sign()
-            .map_err(|e| AppError::Internal(format!("build get_book call tx: {e}")))?;
-
-        let bytes = self
-            .client
-            .call(call_tx)
-            .await
-            .map_err(|e| AppError::Internal(format!("call get_book failed: {e}")))?;
-
-        bincode::deserialize(&bytes)
-            .map_err(|e| AppError::Internal(format!("decode GetOrderBook: {e}")))
-    }
-
-    pub async fn get_market_info(
-        &self,
-        account: Address,
-        spot_market: ContractAddress,
-    ) -> AppResult<GetMarket> {
-        let action = ActionBuilder::get_market_info(spot_market, GetMarketInfoParams {})
-            .map_err(|e| AppError::Internal(format!("build get_market_info action: {e}")))?;
-
-        let call_tx = TransactionBuilder::new()
-            .account(account)
-            .expiration(u64::MAX)
-            .add_action(action)
-            .build_and_without_sign()
-            .map_err(|e| AppError::Internal(format!("build get_market_info call tx: {e}")))?;
-
-        let bytes = self
-            .client
-            .call(call_tx)
-            .await
-            .map_err(|e| AppError::Internal(format!("call get_market_info failed: {e}")))?;
-
-        bincode::deserialize(&bytes)
-            .map_err(|e| AppError::Internal(format!("decode GetMarket: {e}")))
     }
 }
 
@@ -470,6 +375,10 @@ fn question_hash(question: &str) -> [u8; 32] {
     compute_question_hash(question)
 }
 
+pub fn market_uuid(market_address: &str) -> Uuid {
+    Uuid::new_v5(&Uuid::NAMESPACE_OID, market_address.as_bytes())
+}
+
 pub fn compute_question_hash(question: &str) -> [u8; 32] {
     let mut hash = [0u8; 32];
     let bytes = question.as_bytes();
@@ -491,12 +400,25 @@ pub struct LocalSignerService {
 }
 
 impl LocalSignerService {
-    pub fn new() -> Self {
-        let signer = Signer::new();
-        Self {
+    pub fn from_config(config: &Config) -> SdkResult<Self> {
+        let signer = if let Some(encoded) = &config.dev_secret_key {
+            let signer = Signer::from_secret_key_base64(encoded.trim())?;
+            tracing::info!(address = %signer.address(), "loaded dev signer from DEV_SECRET_KEY");
+            signer
+        } else {
+            let signer = Signer::new();
+            tracing::warn!(
+                address = %signer.address(),
+                secret_key = %signer.export_secret_key(),
+                "DEV_SECRET_KEY not set; using ephemeral dev signer — add DEV_SECRET_KEY to .env to keep this address across restarts"
+            );
+            signer
+        };
+
+        Ok(Self {
             secret_key_b64: signer.export_secret_key(),
             address: signer.address(),
-        }
+        })
     }
 }
 

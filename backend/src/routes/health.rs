@@ -15,19 +15,10 @@ async fn health() -> Json<serde_json::Value> {
 }
 
 async fn ready(State(state): State<AppState>) -> AppResult<Json<serde_json::Value>> {
-    let node_ok = state.chain.health_check().await?;
-    let head = state.indexed_head.read().await.clone();
-    let market_count = state.index.list_markets().await.len();
+    let clob_ok = state.clob.health_check().await?;
 
     Ok(Json(json!({
-        "status": if node_ok { "ready" } else { "degraded" },
-        "node": node_ok,
-        "indexer": {
-            "connected": head.connected,
-            "block_num": head.block_num,
-            "digest": head.digest,
-            "tx_count": head.tx_count,
-            "market_count": market_count,
-        },
+        "status": if clob_ok { "ready" } else { "degraded" },
+        "clob_index": clob_ok,
     })))
 }

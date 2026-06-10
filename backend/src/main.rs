@@ -1,9 +1,11 @@
+mod cash_token;
 mod chain;
+mod clob;
 mod config;
 mod error;
-mod indexer;
 mod models;
 mod routes;
+mod slug;
 mod state;
 
 use std::net::SocketAddr;
@@ -29,16 +31,6 @@ async fn main() {
 
     let config = Config::from_env();
     let state = AppState::new(config.clone());
-
-    if config.enable_indexer {
-        let ws_url = config.lightpool_ws_url.clone();
-        let head = state.indexed_head.clone();
-        let index = state.index.clone();
-        let _indexer_handle = indexer::spawn(ws_url, head, index);
-        tracing::info!("block indexer started");
-    } else {
-        tracing::info!("block indexer disabled");
-    }
 
     let app = Router::new()
         .nest("/api", routes::api_router())

@@ -1,68 +1,41 @@
 use axum::{extract::State, routing::get, Json, Router};
-use lightpool_sdk::parse_token_contract;
+use serde::Serialize;
 
-use crate::chain::format_token_amount;
+use crate::clob::BalanceTokenSpec;
 use crate::error::AppResult;
 use crate::models::BalanceEntry;
 use crate::state::AppState;
 
+#[derive(Serialize)]
+pub struct AccountResponse {
+    pub address: String,
+}
+
 pub fn router() -> Router<AppState> {
-    Router::new().route("/balances", get(get_balances))
+    Router::new()
+        .route("/", get(get_account))
+        .route("/balances", get(get_balances))
+}
+
+async fn get_account(State(state): State<AppState>) -> Json<AccountResponse> {
+    let address = state.signer.user_address().await.to_string();
+    Json(AccountResponse { address })
 }
 
 async fn get_balances(State(state): State<AppState>) -> AppResult<Json<Vec<BalanceEntry>>> {
-    let account = state.signer.user_address().await;
-    let mut entries = Vec::new();
+    let account = state.signer.user_address().await.to_string();
 
-    for (symbol, token_str) in state.index.balance_token_specs().await {
-        let is_position = is_position_symbol(&symbol);
-
-        let token_contract = match parse_token_contract(&token_str) {
-            Ok(contract) => contract,
-            Err(e) => {
-                tracing::warn!(symbol = %symbol, token = %token_str, error = %e, "skip balance query");
-                if !is_position {
-                    entries.push(zero_balance_entry(symbol, token_str));
-                }
-                continue;
-            }
-        };
-
-        match state.chain.get_balance(account, token_contract).await {
-            Ok(balance) => {
-                if is_position && balance.total == 0 && balance.locked == 0 {
-                    continue;
-                }
-                entries.push(BalanceEntry {
-                    token: token_str,
-                    symbol,
-                    total: format_token_amount(balance.total),
-                    locked: format_token_amount(balance.locked),
-                    available: format_token_amount(balance.available),
-                });
-            }
-            Err(e) => {
-                tracing::warn!(symbol = %symbol, error = %e, "get_balance failed, returning zero");
-                if !is_position {
-                    entries.push(zero_balance_entry(symbol, token_str));
-                }
-            }
-        }
+    let mut tokens: Vec<BalanceTokenSpec> = Vec::new();
+    if let Some(cash) = state.cash_token.get().await {
+        tokens.push(BalanceTokenSpec {
+            symbol: cash.symbol,
+            address: cash.address,
+        });
     }
 
+    let position_specs = state.clob.position_token_specs().await?;
+    tokens.extend(position_specs);
+
+    let entries = state.clob.get_balances(&account, &tokens).await?;
     Ok(Json(entries))
-}
-
-fn is_position_symbol(symbol: &str) -> bool {
-    symbol == "YES" || symbol == "NO"
-}
-
-fn zero_balance_entry(symbol: String, token: String) -> BalanceEntry {
-    BalanceEntry {
-        token,
-        symbol,
-        total: "0".into(),
-        locked: "0".into(),
-        available: "0".into(),
-    }
 }

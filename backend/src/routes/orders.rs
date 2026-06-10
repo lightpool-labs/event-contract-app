@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State},
-    routing::{get, post},
+    routing::post,
     Json, Router,
 };
 use lightpool_sdk::{
@@ -13,7 +13,6 @@ use crate::chain::{
     extract_order_created_from_receipt, parse_order_size, parse_price_pieces,
 };
 use crate::error::{AppError, AppResult};
-use crate::indexer::index_order_created;
 use crate::models::Order;
 use crate::state::AppState;
 
@@ -25,7 +24,7 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Debug, Deserialize)]
 pub struct PlaceOrderRequest {
-    pub market_id: Uuid,
+    pub event_slug: String,
     pub outcome: String,
     pub side: String,
     pub price: String,
@@ -45,10 +44,9 @@ async fn place_order(
     }
 
     let market = state
-        .index
-        .get_market(body.market_id)
-        .await
-        .ok_or_else(|| AppError::NotFound(format!("market {} not found", body.market_id)))?;
+        .clob
+        .get_market_by_slug(body.event_slug.trim())
+        .await?;
 
     let spot_market_str = if body.outcome == "yes" {
         &market.yes_spot_market
@@ -122,9 +120,7 @@ async fn place_order(
         AppError::Internal("order_created event missing from place_order receipt".into())
     })?;
 
-    let order = index_order_created(&state.index, created)
-        .await
-        .ok_or_else(|| AppError::Internal("failed to index placed order".into()))?;
+    let order = state.clob.index_order_from_event(created).await?;
 
     Ok(Json(order))
 }
@@ -136,10 +132,9 @@ async fn cancel_order(
     let user = state.signer.user_address().await.to_string();
 
     let (mut order, chain_order_id, spot_market) = state
-        .index
+        .clob
         .order_cancel_context(id, &user)
-        .await
-        .ok_or_else(|| AppError::NotFound(format!("open order {id} not found")))?;
+        .await?;
 
     let chain_order_id_u64: u64 = chain_order_id
         .parse()
@@ -159,23 +154,14 @@ async fn cancel_order(
         .cancel_order(&signer, spot_market, chain_order_id_u64)
         .await?;
 
-    state.index.update_order_cancelled(&chain_order_id).await;
+    state.clob.mark_order_cancelled(id, &user).await?;
 
     order.status = "cancelled".into();
     Ok(Json(order))
 }
 
-async fn list_orders(State(state): State<AppState>) -> Json<Vec<Order>> {
-    let user = state.signer.user_address().await;
-    let mut orders = state.index.list_orders_for_user(&user.to_string()).await;
-
-    for order in &mut orders {
-        if order.question.is_empty() {
-            if let Some(market) = state.index.get_market(order.market_id).await {
-                order.question = market.question;
-            }
-        }
-    }
-
-    Json(orders)
+async fn list_orders(State(state): State<AppState>) -> AppResult<Json<Vec<Order>>> {
+    let user = state.signer.user_address().await.to_string();
+    let orders = state.clob.list_orders(&user).await?;
+    Ok(Json(orders))
 }

@@ -5,20 +5,19 @@ use axum::{
 };
 use lightpool_sdk::parse_token_contract;
 use serde::Deserialize;
-use uuid::Uuid;
 
-use crate::chain::{format_price_pieces, format_token_amount, parse_order_size};
+use crate::chain::{format_token_amount, parse_order_size};
 use crate::error::{AppError, AppResult};
-use crate::models::{BookLevel, BookResponse, Market, MintBurnRequest, MintBurnResponse};
+use crate::models::{BookResponse, Market, MintBurnRequest, MintBurnResponse};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/", get(list_markets))
-        .route("/:id/book", get(get_book))
-        .route("/:id/mint", post(mint_market))
-        .route("/:id/burn", post(burn_market))
-        .route("/:id", get(get_market))
+        .route("/", get(list_events))
+        .route("/:slug/book", get(get_book))
+        .route("/:slug/mint", post(mint_event))
+        .route("/:slug/burn", post(burn_event))
+        .route("/:slug", get(get_event))
 }
 
 #[derive(Debug, Deserialize)]
@@ -27,25 +26,28 @@ pub struct BookQuery {
     pub depth: Option<u32>,
 }
 
-async fn list_markets(State(state): State<AppState>) -> Json<Vec<Market>> {
-    Json(state.index.list_markets().await)
+async fn resolve_event(state: &AppState, slug: &str) -> AppResult<Market> {
+    state
+        .clob
+        .get_market_by_slug(slug)
+        .await
 }
 
-async fn get_market(
+async fn list_events(State(state): State<AppState>) -> AppResult<Json<Vec<Market>>> {
+    let markets = state.clob.list_markets().await?;
+    Ok(Json(markets))
+}
+
+async fn get_event(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path(slug): Path<String>,
 ) -> AppResult<Json<Market>> {
-    state
-        .index
-        .get_market(id)
-        .await
-        .map(Json)
-        .ok_or_else(|| AppError::NotFound(format!("market {id} not found")))
+    resolve_event(&state, &slug).await.map(Json)
 }
 
 async fn get_book(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path(slug): Path<String>,
     Query(query): Query<BookQuery>,
 ) -> AppResult<Json<BookResponse>> {
     let outcome = query.outcome.as_deref().unwrap_or("yes");
@@ -53,11 +55,7 @@ async fn get_book(
         return Err(AppError::BadRequest("outcome must be yes or no".into()));
     }
 
-    let market = state
-        .index
-        .get_market(id)
-        .await
-        .ok_or_else(|| AppError::NotFound(format!("market {id} not found")))?;
+    let market = resolve_event(&state, &slug).await?;
 
     let spot_market_str = if outcome == "yes" {
         &market.yes_spot_market
@@ -65,51 +63,23 @@ async fn get_book(
         &market.no_spot_market
     };
 
-    let spot_market = parse_token_contract(spot_market_str)
-        .map_err(|e| AppError::BadRequest(format!("invalid spot market: {e}")))?;
-
-    let account = state.signer.user_address().await;
+    let account = state.signer.user_address().await.to_string();
     let depth = query.depth.unwrap_or(10);
 
-    let book = state.chain.get_book(account, spot_market, depth).await?;
-    let last_trade_price = if let Some(price) = state.index.last_trade_price(spot_market_str).await {
-        Some(format_price_pieces(price))
-    } else {
-        let market_info = state.chain.get_market_info(account, spot_market).await?;
-        market_info.last_price.map(|price| format_price_pieces(price))
-    };
+    let book = state
+        .clob
+        .get_book(&account, spot_market_str, depth)
+        .await?;
 
-    Ok(Json(BookResponse {
-        bids: book
-            .best_bids
-            .into_iter()
-            .map(|level| BookLevel {
-                price: format_price_pieces(level.price),
-                size: format_token_amount(level.total_quantity),
-            })
-            .collect(),
-        asks: book
-            .best_asks
-            .into_iter()
-            .map(|level| BookLevel {
-                price: format_price_pieces(level.price),
-                size: format_token_amount(level.total_quantity),
-            })
-            .collect(),
-        last_trade_price,
-    }))
+    Ok(Json(book))
 }
 
-async fn mint_market(
+async fn mint_event(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path(slug): Path<String>,
     Json(body): Json<MintBurnRequest>,
 ) -> AppResult<Json<MintBurnResponse>> {
-    let market = state
-        .index
-        .get_market(id)
-        .await
-        .ok_or_else(|| AppError::NotFound(format!("market {id} not found")))?;
+    let market = resolve_event(&state, &slug).await?;
 
     let amount = parse_order_size(&body.amount)?;
     let market_address = parse_token_contract(&market.market_address)
@@ -140,22 +110,18 @@ async fn mint_market(
         .await?;
 
     Ok(Json(MintBurnResponse {
-        market_id: id,
+        slug: market.slug,
         amount: format_token_amount(result.amount),
         tx_digest: result.tx_digest,
     }))
 }
 
-async fn burn_market(
+async fn burn_event(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    Path(slug): Path<String>,
     Json(body): Json<MintBurnRequest>,
 ) -> AppResult<Json<MintBurnResponse>> {
-    let market = state
-        .index
-        .get_market(id)
-        .await
-        .ok_or_else(|| AppError::NotFound(format!("market {id} not found")))?;
+    let market = resolve_event(&state, &slug).await?;
 
     let amount = parse_order_size(&body.amount)?;
     let market_address = parse_token_contract(&market.market_address)
@@ -186,7 +152,7 @@ async fn burn_market(
         .await?;
 
     Ok(Json(MintBurnResponse {
-        market_id: id,
+        slug: market.slug,
         amount: format_token_amount(result.amount),
         tx_digest: result.tx_digest,
     }))
