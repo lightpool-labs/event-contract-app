@@ -25,6 +25,13 @@ export type Event = {
   resolution_deadline: number;
 };
 
+export type EventsPage = {
+  markets: Event[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export type Order = {
   id: string;
   market_id: string;

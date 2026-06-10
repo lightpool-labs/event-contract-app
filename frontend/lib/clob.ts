@@ -146,7 +146,7 @@ export function createOrderBookSubscription(
       socket?.send(
         JSON.stringify({
           op: "subscribe",
-          channel: "orderbook",
+          channel: "orderbook_delta",
           spot_market: spotMarket,
           depth,
         }),
@@ -202,7 +202,7 @@ export function createOrderBookSubscription(
         socket.send(
           JSON.stringify({
             op: "unsubscribe",
-            channel: "orderbook",
+            channel: "orderbook_delta",
             spot_market: spotMarket,
           }),
         );

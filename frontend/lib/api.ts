@@ -6,6 +6,7 @@ import type {
   CreateTokenRequest,
   CreateTokenResponse,
   Event,
+  EventsPage,
   MintBurnRequest,
   MintBurnResponse,
   Order,
@@ -35,7 +36,96 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<{ status: string }>("/health"),
   ready: () => request<{ status: string; node: boolean }>("/ready"),
-  listEvents: () => request<Event[]>("/events"),
+  listEvents: async (params?: {
+    limit?: number;
+    offset?: number;
+    slug?: string;
+    slugs?: string;
+    state?: string;
+    order?: string;
+    ascending?: boolean;
+  }) => {
+    if (!params) {
+      const all: Event[] = [];
+      const limit = 100;
+      let offset = 0;
+
+      while (true) {
+        const page = await request<EventsPage>(
+          `/events?limit=${limit}&offset=${offset}`,
+        );
+        all.push(...page.markets);
+        if (all.length >= page.total || page.markets.length < limit) {
+          break;
+        }
+        offset += limit;
+      }
+
+      return all;
+    }
+
+    const search = new URLSearchParams();
+    if (params.limit !== undefined) {
+      search.set("limit", String(params.limit));
+    }
+    if (params.offset !== undefined) {
+      search.set("offset", String(params.offset));
+    }
+    if (params.slug) {
+      search.set("slug", params.slug);
+    }
+    if (params.slugs) {
+      search.set("slugs", params.slugs);
+    }
+    if (params.state) {
+      search.set("state", params.state);
+    }
+    if (params.order) {
+      search.set("order", params.order);
+    }
+    if (params.ascending !== undefined) {
+      search.set("ascending", String(params.ascending));
+    }
+
+    const query = search.toString();
+    const page = await request<EventsPage>(`/events${query ? `?${query}` : ""}`);
+    return page.markets;
+  },
+  queryEvents: (params?: {
+    limit?: number;
+    offset?: number;
+    slug?: string;
+    slugs?: string;
+    state?: string;
+    order?: string;
+    ascending?: boolean;
+  }) => {
+    const search = new URLSearchParams();
+    if (params?.limit !== undefined) {
+      search.set("limit", String(params.limit));
+    }
+    if (params?.offset !== undefined) {
+      search.set("offset", String(params.offset));
+    }
+    if (params?.slug) {
+      search.set("slug", params.slug);
+    }
+    if (params?.slugs) {
+      search.set("slugs", params.slugs);
+    }
+    if (params?.state) {
+      search.set("state", params.state);
+    }
+    if (params?.order) {
+      search.set("order", params.order);
+    }
+    if (params?.ascending !== undefined) {
+      search.set("ascending", String(params.ascending));
+    }
+
+    const query = search.toString();
+    return request<EventsPage>(`/events${query ? `?${query}` : ""}`);
+  },
   getEvent: (slug: string) => request<Event>(`/events/${slug}`),
   listOrders: () => request<Order[]>("/orders"),
   placeOrder: (body: PlaceOrderRequest) =>
