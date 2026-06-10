@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{BalanceEntry, Market, Order};
+use crate::models::{BalanceEntry, Market, MarketsPage, Order, QueryMarketsParams};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BalanceTokenSpec {
@@ -118,13 +118,59 @@ impl ClobIndexClient {
         Err(AppError::Internal(message))
     }
 
+    async fn get_json_with_query<T, Q>(
+        &self,
+        path: &str,
+        query: &Q,
+    ) -> AppResult<T>
+    where
+        T: for<'de> Deserialize<'de>,
+        Q: Serialize + ?Sized,
+    {
+        let url = format!("{}{}", self.base_url, path);
+        let response = self
+            .client
+            .get(&url)
+            .query(query)
+            .send()
+            .await
+            .map_err(|e| AppError::Internal(format!("clob-index request failed: {e}")))?;
+
+        Self::decode_response(response).await
+    }
+
     pub async fn health_check(&self) -> AppResult<bool> {
         let ready: ReadyResponse = self.get_json("/api/health/ready").await?;
         Ok(ready.node && ready.status == "ready")
     }
 
-    pub async fn list_markets(&self) -> AppResult<Vec<Market>> {
-        self.get_json("/api/markets").await
+    pub async fn query_markets(&self, params: &QueryMarketsParams) -> AppResult<MarketsPage> {
+        self.get_json_with_query("/api/markets", params).await
+    }
+
+    pub async fn fetch_all_markets(&self) -> AppResult<Vec<Market>> {
+        const PAGE_LIMIT: u32 = 100;
+        let mut offset = 0u32;
+        let mut markets = Vec::new();
+
+        loop {
+            let page = self
+                .query_markets(&QueryMarketsParams {
+                    limit: Some(PAGE_LIMIT),
+                    offset: Some(offset),
+                    ..QueryMarketsParams::default()
+                })
+                .await?;
+
+            let page_len = page.markets.len();
+            markets.extend(page.markets);
+            if markets.len() >= page.total || page_len == 0 {
+                break;
+            }
+            offset = offset.saturating_add(PAGE_LIMIT);
+        }
+
+        Ok(markets)
     }
 
     pub async fn get_market_by_slug(&self, slug: &str) -> AppResult<Market> {

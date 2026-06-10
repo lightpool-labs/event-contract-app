@@ -45,11 +45,8 @@ async fn get_balances(State(state): State<AppState>) -> AppResult<Json<Vec<Balan
         push_token(&cash.symbol, &cash.address);
     }
 
-    let markets = state.clob.list_markets().await?;
-    for market in markets {
-        push_token("YES", &market.yes_token);
-        push_token("NO", &market.no_token);
-    }
+    let position_specs = state.clob.position_token_specs().await?;
+    tokens.extend(position_specs);
 
     let entries = state.clob.get_balances(&account, &tokens).await?;
     Ok(Json(entries))

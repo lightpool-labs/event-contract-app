@@ -102,3 +102,33 @@ pub struct CreateEventContractResponse {
     pub tx_digest: String,
     pub creator: String,
 }
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct QueryMarketsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slug: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slugs: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_ids: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_addresses: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ascending: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketsPage {
+    pub markets: Vec<Market>,
+    pub total: usize,
+    pub limit: u32,
+    pub offset: u32,
+}

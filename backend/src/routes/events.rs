@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     routing::{get, post},
     Json, Router,
 };
@@ -7,27 +7,27 @@ use lightpool_sdk::parse_token_contract;
 
 use crate::chain::{format_token_amount, parse_order_size};
 use crate::error::{AppError, AppResult};
-use crate::models::{Market, MintBurnRequest, MintBurnResponse};
+use crate::models::{Market, MarketsPage, MintBurnRequest, MintBurnResponse, QueryMarketsParams};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/", get(list_events))
+        .route("/", get(query_events))
         .route("/:slug/mint", post(mint_event))
         .route("/:slug/burn", post(burn_event))
         .route("/:slug", get(get_event))
 }
 
 async fn resolve_event(state: &AppState, slug: &str) -> AppResult<Market> {
-    state
-        .clob
-        .get_market_by_slug(slug)
-        .await
+    state.clob.get_market_by_slug(slug).await
 }
 
-async fn list_events(State(state): State<AppState>) -> AppResult<Json<Vec<Market>>> {
-    let markets = state.clob.list_markets().await?;
-    Ok(Json(markets))
+async fn query_events(
+    State(state): State<AppState>,
+    Query(params): Query<QueryMarketsParams>,
+) -> AppResult<Json<MarketsPage>> {
+    let page = state.clob.query_markets(&params).await?;
+    Ok(Json(page))
 }
 
 async fn get_event(
