@@ -1,5 +1,5 @@
 import { api } from "@/lib/api";
-import EventDetailClient from "./EventDetailClient";
+import MarketDetailClient from "./MarketDetailClient";
 
 function parseOutcome(value?: string): "yes" | "no" {
   if (value === "no") {
@@ -8,25 +8,25 @@ function parseOutcome(value?: string): "yes" | "no" {
   return "yes";
 }
 
-export default async function EventDetailPage({
+export default async function MarketDetailPage({
   params,
   searchParams,
 }: {
   params: { slug: string };
   searchParams: { outcome?: string };
 }) {
-  let event = null;
+  let market = null;
 
   try {
-    event = await api.getEvent(params.slug);
+    market = await api.getMarket(params.slug);
   } catch {
-    event = null;
+    market = null;
   }
 
   return (
-    <EventDetailClient
+    <MarketDetailClient
       params={params}
-      initialEvent={event}
+      initialMarket={market}
       initialOutcome={parseOutcome(searchParams.outcome)}
     />
   );

@@ -1,20 +1,19 @@
 import { api } from "@/lib/api";
-import type { BalanceEntry } from "@/lib/types";
-import type { Event } from "@/lib/types";
+import type { BalanceEntry, Market } from "@/lib/types";
 import { formatUsd, sumCash } from "@/lib/balances";
 
 export default async function CashPage() {
   let balances: BalanceEntry[] = [];
-  let events: Event[] = [];
+  let markets: Market[] = [];
   let error: string | null = null;
 
   try {
-    [balances, events] = await Promise.all([api.getBalances(), api.listEvents()]);
+    [balances, markets] = await Promise.all([api.getBalances(), api.listMarkets()]);
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to load cash balance";
   }
 
-  const total = sumCash(balances, events);
+  const total = sumCash(balances, markets);
   const cashBalances = balances.filter(
     (balance) => balance.symbol !== "YES" && balance.symbol !== "NO",
   );

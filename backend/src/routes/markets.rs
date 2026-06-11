@@ -12,17 +12,17 @@ use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/", get(query_events))
-        .route("/:slug/mint", post(mint_event))
-        .route("/:slug/burn", post(burn_event))
-        .route("/:slug", get(get_event))
+        .route("/", get(query_markets))
+        .route("/:slug/mint", post(mint_market))
+        .route("/:slug/burn", post(burn_market))
+        .route("/:slug", get(get_market))
 }
 
-async fn resolve_event(state: &AppState, slug: &str) -> AppResult<Market> {
+async fn resolve_market(state: &AppState, slug: &str) -> AppResult<Market> {
     state.clob.get_market_by_slug(slug).await
 }
 
-async fn query_events(
+async fn query_markets(
     State(state): State<AppState>,
     Query(params): Query<QueryMarketsParams>,
 ) -> AppResult<Json<MarketsPage>> {
@@ -30,19 +30,19 @@ async fn query_events(
     Ok(Json(page))
 }
 
-async fn get_event(
+async fn get_market(
     State(state): State<AppState>,
     Path(slug): Path<String>,
 ) -> AppResult<Json<Market>> {
-    resolve_event(&state, &slug).await.map(Json)
+    resolve_market(&state, &slug).await.map(Json)
 }
 
-async fn mint_event(
+async fn mint_market(
     State(state): State<AppState>,
     Path(slug): Path<String>,
     Json(body): Json<MintBurnRequest>,
 ) -> AppResult<Json<MintBurnResponse>> {
-    let market = resolve_event(&state, &slug).await?;
+    let market = resolve_market(&state, &slug).await?;
 
     let amount = parse_order_size(&body.amount)?;
     let market_address = parse_token_contract(&market.market_address)
@@ -79,12 +79,12 @@ async fn mint_event(
     }))
 }
 
-async fn burn_event(
+async fn burn_market(
     State(state): State<AppState>,
     Path(slug): Path<String>,
     Json(body): Json<MintBurnRequest>,
 ) -> AppResult<Json<MintBurnResponse>> {
-    let market = resolve_event(&state, &slug).await?;
+    let market = resolve_market(&state, &slug).await?;
 
     let amount = parse_order_size(&body.amount)?;
     let market_address = parse_token_contract(&market.market_address)

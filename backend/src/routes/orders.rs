@@ -24,7 +24,7 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Debug, Deserialize)]
 pub struct PlaceOrderRequest {
-    pub event_slug: String,
+    pub market_slug: String,
     pub outcome: String,
     pub side: String,
     pub price: String,
@@ -45,7 +45,7 @@ async fn place_order(
 
     let market = state
         .clob
-        .get_market_by_slug(body.event_slug.trim())
+        .get_market_by_slug(body.market_slug.trim())
         .await?;
 
     let spot_market_str = if body.outcome == "yes" {

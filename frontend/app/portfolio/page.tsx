@@ -1,4 +1,4 @@
-import type { BalanceEntry, BookResponse, Event } from "@/lib/types";
+import type { BalanceEntry, BookResponse, Market } from "@/lib/types";
 import {
   findPositionMeta,
   formatUsd,
@@ -19,7 +19,7 @@ function outcomeLabel(outcome: string): string {
 
 export default async function PortfolioPage() {
   let balances: BalanceEntry[] = [];
-  let events: Event[] = [];
+  let markets: Market[] = [];
   let booksBySpotMarket = new Map<string, BookResponse>();
   let total = 0;
   let error: string | null = null;
@@ -27,14 +27,14 @@ export default async function PortfolioPage() {
   try {
     const summary = await loadPortfolioSummary();
     balances = summary.balances;
-    events = summary.events;
+    markets = summary.markets;
     booksBySpotMarket = summary.booksBySpotMarket;
     total = summary.portfolio;
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to load portfolio";
   }
 
-  const positions = getPositionBalances(balances, events);
+  const positions = getPositionBalances(balances, markets);
 
   return (
     <div>
@@ -59,8 +59,8 @@ export default async function PortfolioPage() {
           </thead>
           <tbody>
             {positions.map((balance) => {
-              const meta = findPositionMeta(balance.token, events);
-              const value = positionUsdValue(balance, events, booksBySpotMarket);
+              const meta = findPositionMeta(balance.token, markets);
+              const value = positionUsdValue(balance, markets, booksBySpotMarket);
 
               return (
                 <tr key={balance.token} className="border-t border-slate-100">

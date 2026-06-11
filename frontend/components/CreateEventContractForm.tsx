@@ -313,8 +313,8 @@ export function CreateEventContractForm() {
               <p className="mt-1 break-all font-mono text-xs">NO token: {result.no_token}</p>
               <p className="mt-1 break-all font-mono text-xs">Tx: {result.tx_digest}</p>
               <p className="mt-2 text-xs">
-                <a href={`/events/${result.slug}`} className="underline">
-                  View event
+                <a href={`/markets/${result.slug}`} className="underline">
+                  View market
                 </a>
               </p>
             </div>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { MintBurnForm } from "@/components/MintBurnForm";
 import { MarketIcon } from "@/components/MarketIcon";
-import type { Event } from "@/lib/types";
+import type { Market } from "@/lib/types";
 
 type Tab = "mint" | "burn";
 
@@ -14,25 +14,25 @@ const tabs: { id: Tab; label: string }[] = [
 
 function tabHref(slug: string, tab: Tab) {
   return tab === "mint"
-    ? `/events/${slug}/mint-burn`
-    : `/events/${slug}/mint-burn?tab=${tab}`;
+    ? `/markets/${slug}/mint-burn`
+    : `/markets/${slug}/mint-burn?tab=${tab}`;
 }
 
-export default function EventMintBurnTabs({
-  event,
+export default function MarketMintBurnTabs({
+  market,
   activeTab,
 }: {
-  event: Event;
+  market: Market;
   activeTab: Tab;
 }) {
   return (
     <div>
       <div className="mb-4">
         <div className="flex items-start gap-3">
-          <MarketIcon iconUrl={event.icon_url} question={event.question} size="md" />
+          <MarketIcon iconUrl={market.icon_url} question={market.question} size="md" />
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">{event.question}</h1>
-            <p className="mt-1 font-mono text-xs text-slate-500">{event.market_address}</p>
+            <h1 className="text-xl font-semibold text-slate-900">{market.question}</h1>
+            <p className="mt-1 font-mono text-xs text-slate-500">{market.market_address}</p>
           </div>
         </div>
       </div>
@@ -41,7 +41,7 @@ export default function EventMintBurnTabs({
         {tabs.map((tab) => (
           <Link
             key={tab.id}
-            href={tabHref(event.slug, tab.id)}
+            href={tabHref(market.slug, tab.id)}
             className={[
               "px-4 py-2 text-sm font-medium",
               activeTab === tab.id
@@ -57,16 +57,16 @@ export default function EventMintBurnTabs({
       {activeTab === "mint" ? (
         <div>
           <p className="mb-4 text-sm text-slate-600">
-            Mint YES and NO tokens by depositing collateral into this event contract.
+            Mint YES and NO tokens by depositing collateral into this market contract.
           </p>
-          <MintBurnForm event={event} mode="mint" />
+          <MintBurnForm market={market} mode="mint" />
         </div>
       ) : (
         <div>
           <p className="mb-4 text-sm text-slate-600">
-            Burn equal YES and NO tokens to recover collateral from this event contract.
+            Burn equal YES and NO tokens to recover collateral from this market contract.
           </p>
-          <MintBurnForm event={event} mode="burn" />
+          <MintBurnForm market={market} mode="burn" />
         </div>
       )}
     </div>

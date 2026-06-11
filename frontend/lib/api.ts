@@ -5,8 +5,8 @@ import type {
   CreateEventContractResponse,
   CreateTokenRequest,
   CreateTokenResponse,
-  Event,
-  EventsPage,
+  Market,
+  MarketsPage,
   MintBurnRequest,
   MintBurnResponse,
   Order,
@@ -36,7 +36,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<{ status: string }>("/health"),
   ready: () => request<{ status: string; node: boolean }>("/ready"),
-  listEvents: async (params?: {
+  listMarkets: async (params?: {
     limit?: number;
     offset?: number;
     slug?: string;
@@ -46,13 +46,13 @@ export const api = {
     ascending?: boolean;
   }) => {
     if (!params) {
-      const all: Event[] = [];
+      const all: Market[] = [];
       const limit = 100;
       let offset = 0;
 
       while (true) {
-        const page = await request<EventsPage>(
-          `/events?limit=${limit}&offset=${offset}`,
+        const page = await request<MarketsPage>(
+          `/markets?limit=${limit}&offset=${offset}`,
         );
         all.push(...page.markets);
         if (all.length >= page.total || page.markets.length < limit) {
@@ -88,10 +88,10 @@ export const api = {
     }
 
     const query = search.toString();
-    const page = await request<EventsPage>(`/events${query ? `?${query}` : ""}`);
+    const page = await request<MarketsPage>(`/markets${query ? `?${query}` : ""}`);
     return page.markets;
   },
-  queryEvents: (params?: {
+  queryMarkets: (params?: {
     limit?: number;
     offset?: number;
     slug?: string;
@@ -124,9 +124,9 @@ export const api = {
     }
 
     const query = search.toString();
-    return request<EventsPage>(`/events${query ? `?${query}` : ""}`);
+    return request<MarketsPage>(`/markets${query ? `?${query}` : ""}`);
   },
-  getEvent: (slug: string) => request<Event>(`/events/${slug}`),
+  getMarket: (slug: string) => request<Market>(`/markets/${slug}`),
   listOrders: () => request<Order[]>("/orders"),
   placeOrder: (body: PlaceOrderRequest) =>
     request<Order>("/orders", { method: "POST", body: JSON.stringify(body) }),
@@ -145,13 +145,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  mintEvent: (slug: string, body: MintBurnRequest) =>
-    request<MintBurnResponse>(`/events/${slug}/mint`, {
+  mintMarket: (slug: string, body: MintBurnRequest) =>
+    request<MintBurnResponse>(`/markets/${slug}/mint`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  burnEvent: (slug: string, body: MintBurnRequest) =>
-    request<MintBurnResponse>(`/events/${slug}/burn`, {
+  burnMarket: (slug: string, body: MintBurnRequest) =>
+    request<MintBurnResponse>(`/markets/${slug}/burn`, {
       method: "POST",
       body: JSON.stringify(body),
     }),

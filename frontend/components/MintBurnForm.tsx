@@ -2,16 +2,16 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
-import type { Event, MintBurnResponse } from "@/lib/types";
+import type { Market, MintBurnResponse } from "@/lib/types";
 
 type MintBurnMode = "mint" | "burn";
 
 type MintBurnFormProps = {
-  event: Event;
+  market: Market;
   mode: MintBurnMode;
 };
 
-export function MintBurnForm({ event, mode }: MintBurnFormProps) {
+export function MintBurnForm({ market, mode }: MintBurnFormProps) {
   const [amount, setAmount] = useState("10");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,8 +28,8 @@ export function MintBurnForm({ event, mode }: MintBurnFormProps) {
 
     try {
       const response = isMint
-        ? await api.mintEvent(event.slug, { amount })
-        : await api.burnEvent(event.slug, { amount });
+        ? await api.mintMarket(market.slug, { amount })
+        : await api.burnMarket(market.slug, { amount });
       setResult(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : `${actionLabel} failed`);
@@ -66,10 +66,10 @@ export function MintBurnForm({ event, mode }: MintBurnFormProps) {
         </div>
 
         <div className="rounded border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          <p className="break-all font-mono">Event: {event.market_address}</p>
-          <p className="mt-1 break-all font-mono">Collateral: {event.collateral_token}</p>
-          <p className="mt-1 break-all font-mono">YES token: {event.yes_token}</p>
-          <p className="mt-1 break-all font-mono">NO token: {event.no_token}</p>
+          <p className="break-all font-mono">Market: {market.market_address}</p>
+          <p className="mt-1 break-all font-mono">Collateral: {market.collateral_token}</p>
+          <p className="mt-1 break-all font-mono">YES token: {market.yes_token}</p>
+          <p className="mt-1 break-all font-mono">NO token: {market.no_token}</p>
         </div>
 
         <button

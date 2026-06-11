@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { findPositionMeta, getPositionBalances } from "@/lib/balances";
-import type { BalanceEntry, Event, Order } from "@/lib/types";
+import type { BalanceEntry, Market, Order } from "@/lib/types";
 
 type Tab = "position" | "open" | "history";
 
@@ -27,13 +27,13 @@ export default function DashboardTabs({
   activeTab,
   balances,
   orders,
-  events,
+  markets,
   error,
 }: {
   activeTab: Tab;
   balances: BalanceEntry[];
   orders: Order[];
-  events: Event[];
+  markets: Market[];
   error: string | null;
 }) {
   const openOrders = orders.filter((o) => o.status === "open");
@@ -43,7 +43,7 @@ export default function DashboardTabs({
       o.status === "cancelled" ||
       o.status === "partial_filled",
   );
-  const positions = getPositionBalances(balances, events);
+  const positions = getPositionBalances(balances, markets);
 
   return (
     <div>
@@ -83,14 +83,14 @@ export default function DashboardTabs({
             </thead>
             <tbody>
               {positions.map((b) => {
-                const meta = findPositionMeta(b.token, events);
+                const meta = findPositionMeta(b.token, markets);
 
                 return (
                   <tr key={b.token} className="border-t border-slate-100">
                     <td className="px-4 py-3">
                       {meta ? (
                         <Link
-                          href={`/events/${meta.eventSlug}?outcome=${meta.outcome}`}
+                          href={`/markets/${meta.marketSlug}?outcome=${meta.outcome}`}
                           className="text-slate-900 hover:underline"
                         >
                           {meta.question}{" "}
@@ -214,10 +214,10 @@ function OrdersTable({
             <tr key={order.id} className="border-t border-slate-100">
               <td className="px-4 py-3">
                 <Link
-                  href={`/events/${order.event_slug || order.market_id}?outcome=${order.outcome}`}
+                  href={`/markets/${order.market_slug || order.market_id}?outcome=${order.outcome}`}
                   className="text-slate-900 hover:underline"
                 >
-                  {order.question || "Unknown event"}{" "}
+                  {order.question || "Unknown market"}{" "}
                   <span className="font-medium">[{outcomeLabel(order.outcome)}]</span>
                 </Link>
               </td>

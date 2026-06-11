@@ -6,7 +6,7 @@ import {
   sumPortfolio,
 } from "@/lib/balances";
 import { fetchBooksBySpotMarket } from "@/lib/clob";
-import type { BalanceEntry, BookResponse, Event } from "@/lib/types";
+import type { BalanceEntry, BookResponse, Market } from "@/lib/types";
 
 export const PORTFOLIO_REFRESH_EVENT = "lightpool:portfolio-refresh";
 
@@ -21,42 +21,42 @@ export type PortfolioSummary = {
   portfolio: number;
   cash: number;
   balances: BalanceEntry[];
-  events: Event[];
+  markets: Market[];
   booksBySpotMarket: Map<string, BookResponse>;
 };
 
 export async function loadPortfolioSummary(): Promise<PortfolioSummary> {
-  const [balances, events] = await Promise.all([
+  const [balances, markets] = await Promise.all([
     api.getBalances(),
-    api.listEvents(),
+    api.listMarkets(),
   ]);
 
-  const spotMarkets = spotMarketsForPositions(balances, events);
+  const spotMarkets = spotMarketsForPositions(balances, markets);
   const booksBySpotMarket = await fetchBooksBySpotMarket(spotMarkets);
 
   return {
-    portfolio: sumPortfolio(balances, events, booksBySpotMarket),
-    cash: sumCash(balances, events),
+    portfolio: sumPortfolio(balances, markets, booksBySpotMarket),
+    cash: sumCash(balances, markets),
     balances,
-    events,
+    markets,
     booksBySpotMarket,
   };
 }
 
 export function summarizeLoadedPortfolio(
   balances: BalanceEntry[],
-  events: Event[],
+  markets: Market[],
   booksBySpotMarket: Map<string, BookResponse>,
 ): Pick<PortfolioSummary, "portfolio" | "cash"> {
   return {
-    portfolio: sumPortfolio(balances, events, booksBySpotMarket),
-    cash: sumCash(balances, events),
+    portfolio: sumPortfolio(balances, markets, booksBySpotMarket),
+    cash: sumCash(balances, markets),
   };
 }
 
 export function hasOpenPositions(
   balances: BalanceEntry[],
-  events: Event[] = [],
+  markets: Market[] = [],
 ): boolean {
-  return getPositionBalances(balances, events).length > 0;
+  return getPositionBalances(balances, markets).length > 0;
 }

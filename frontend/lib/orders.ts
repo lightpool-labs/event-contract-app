@@ -6,12 +6,12 @@ export function isOpenOrder(order: Order): boolean {
 
 export function filterOrdersForBook(
   orders: Order[],
-  eventSlug: string,
+  marketSlug: string,
   outcome: "yes" | "no",
 ): Order[] {
   return orders.filter(
     (order) =>
-      order.event_slug === eventSlug &&
+      order.market_slug === marketSlug &&
       order.outcome === outcome &&
       isOpenOrder(order),
   );

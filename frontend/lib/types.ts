@@ -10,7 +10,7 @@ export type BookResponse = {
   last_trade_price?: string | null;
 };
 
-export type Event = {
+export type Market = {
   id: string;
   slug: string;
   question: string;
@@ -25,8 +25,8 @@ export type Event = {
   resolution_deadline: number;
 };
 
-export type EventsPage = {
-  markets: Event[];
+export type MarketsPage = {
+  markets: Market[];
   total: number;
   limit: number;
   offset: number;
@@ -35,7 +35,7 @@ export type EventsPage = {
 export type Order = {
   id: string;
   market_id: string;
-  event_slug: string;
+  market_slug: string;
   question: string;
   outcome: string;
   side: string;
@@ -53,7 +53,7 @@ export type BalanceEntry = {
 };
 
 export type PlaceOrderRequest = {
-  event_slug: string;
+  market_slug: string;
   outcome: "yes" | "no";
   side: "buy" | "sell";
   price: string;

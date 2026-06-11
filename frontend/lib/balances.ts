@@ -1,4 +1,4 @@
-import type { BalanceEntry, BookResponse, Event } from "./types";
+import type { BalanceEntry, BookResponse, Market } from "./types";
 
 function parseAmount(value: string): number {
   const n = Number.parseFloat(value);
@@ -37,26 +37,26 @@ function hasNonZeroPosition(balance: BalanceEntry): boolean {
 
 export type PositionMeta = {
   question: string;
-  eventSlug: string;
+  marketSlug: string;
   outcome: string;
 };
 
 export function findPositionMeta(
   token: string,
-  events: Event[],
+  markets: Market[],
 ): PositionMeta | null {
-  for (const event of events) {
-    if (tokensMatch(token, event.yes_token)) {
+  for (const market of markets) {
+    if (tokensMatch(token, market.yes_token)) {
       return {
-        question: event.question,
-        eventSlug: event.slug,
+        question: market.question,
+        marketSlug: market.slug,
         outcome: "yes",
       };
     }
-    if (tokensMatch(token, event.no_token)) {
+    if (tokensMatch(token, market.no_token)) {
       return {
-        question: event.question,
-        eventSlug: event.slug,
+        question: market.question,
+        marketSlug: market.slug,
         outcome: "no",
       };
     }
@@ -66,35 +66,35 @@ export function findPositionMeta(
 
 export function spotMarketForBalance(
   balance: BalanceEntry,
-  events: Event[],
+  markets: Market[],
 ): string | null {
-  const meta = findPositionMeta(balance.token, events);
+  const meta = findPositionMeta(balance.token, markets);
   if (!meta) {
     return null;
   }
 
-  const event = events.find((item) => item.slug === meta.eventSlug);
-  if (!event) {
+  const market = markets.find((item) => item.slug === meta.marketSlug);
+  if (!market) {
     return null;
   }
 
-  return meta.outcome === "yes" ? event.yes_spot_market : event.no_spot_market;
+  return meta.outcome === "yes" ? market.yes_spot_market : market.no_spot_market;
 }
 
 export function spotMarketsForPositions(
   balances: BalanceEntry[],
-  events: Event[] = [],
+  markets: Market[] = [],
 ): string[] {
-  const markets: string[] = [];
+  const spotMarkets: string[] = [];
 
-  for (const balance of getPositionBalances(balances, events)) {
-    const spotMarket = spotMarketForBalance(balance, events);
+  for (const balance of getPositionBalances(balances, markets)) {
+    const spotMarket = spotMarketForBalance(balance, markets);
     if (spotMarket) {
-      markets.push(spotMarket);
+      spotMarkets.push(spotMarket);
     }
   }
 
-  return markets;
+  return spotMarkets;
 }
 
 export function getMarkPriceCents(book: BookResponse | undefined): number | null {
@@ -157,7 +157,7 @@ function resolveBookForSpotMarket(
 
 export function positionUsdValue(
   balance: BalanceEntry,
-  events: Event[],
+  markets: Market[],
   booksBySpotMarket: Map<string, BookResponse> = new Map(),
 ): number {
   const shares = parseAmount(balance.total);
@@ -165,7 +165,7 @@ export function positionUsdValue(
     return 0;
   }
 
-  const spotMarket = spotMarketForBalance(balance, events);
+  const spotMarket = spotMarketForBalance(balance, markets);
   if (!spotMarket) {
     return shares * 0.5;
   }
@@ -181,7 +181,7 @@ export function positionUsdValue(
 
 export function getPositionBalances(
   balances: BalanceEntry[],
-  _events: Event[] = [],
+  _markets: Market[] = [],
 ): BalanceEntry[] {
   return balances.filter(
     (balance) => isPositionBalance(balance) && hasNonZeroPosition(balance),
@@ -190,16 +190,16 @@ export function getPositionBalances(
 
 export function sumPortfolio(
   balances: BalanceEntry[],
-  events: Event[] = [],
+  markets: Market[] = [],
   booksBySpotMarket: Map<string, BookResponse> = new Map(),
 ): number {
-  return getPositionBalances(balances, events).reduce(
-    (sum, balance) => sum + positionUsdValue(balance, events, booksBySpotMarket),
+  return getPositionBalances(balances, markets).reduce(
+    (sum, balance) => sum + positionUsdValue(balance, markets, booksBySpotMarket),
     0,
   );
 }
 
-export function sumCash(balances: BalanceEntry[], _events: Event[] = []): number {
+export function sumCash(balances: BalanceEntry[], _markets: Market[] = []): number {
   return balances
     .filter((balance) => !isPositionSymbol(balance.symbol))
     .reduce((sum, balance) => sum + parseAmount(balance.total), 0);

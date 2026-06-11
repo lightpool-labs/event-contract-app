@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import { MarketOutcomeSelector } from "@/components/MarketOutcomeSelector";
 import { OrderBook } from "@/components/OrderBook";
 import { PlaceOrderPanel } from "@/components/PlaceOrderPanel";
-import { createOrderBookSubscription } from "@/lib/clob";
+import {
+  createOrderBookSubscription,
+  createUserOrdersSubscription,
+  upsertOrder,
+} from "@/lib/clob";
 import { api } from "@/lib/api";
 import {
   bookLevelKey,
@@ -12,15 +16,15 @@ import {
   filterOrdersForBook,
 } from "@/lib/orders";
 import { requestPortfolioRefresh } from "@/lib/portfolio";
-import type { BookResponse, Event, Order } from "@/lib/types";
+import type { BookResponse, Market, Order } from "@/lib/types";
 
-export default function EventDetailClient({
+export default function MarketDetailClient({
   params,
-  initialEvent,
+  initialMarket,
   initialOutcome,
 }: {
   params: { slug: string };
-  initialEvent: Event | null;
+  initialMarket: Market | null;
   initialOutcome: "yes" | "no";
 }) {
   const [outcome, setOutcome] = useState<"yes" | "no">(initialOutcome);
@@ -42,21 +46,36 @@ export default function EventDetailClient({
     setOutcome(initialOutcome);
   }, [initialOutcome]);
 
-  async function refreshOrders() {
-    try {
-      const nextOrders = await api.listOrders();
-      setOrders(nextOrders);
-    } catch {
-      // Keep the previous order list when refresh fails.
-    }
-  }
-
   useEffect(() => {
-    void refreshOrders();
+    let unsubscribeOrders: (() => void) | null = null;
+    let cancelled = false;
+
+    async function startUserOrdersSubscription() {
+      try {
+        const account = await api.getAccount();
+        if (cancelled) {
+          return;
+        }
+        unsubscribeOrders = createUserOrdersSubscription(account.address, {
+          onOrders: (nextOrders) => {
+            setOrders(nextOrders);
+          },
+        });
+      } catch {
+        // Keep the previous order list when account or subscription setup fails.
+      }
+    }
+
+    void startUserOrdersSubscription();
+
+    return () => {
+      cancelled = true;
+      unsubscribeOrders?.();
+    };
   }, []);
 
   useEffect(() => {
-    if (!initialEvent) {
+    if (!initialMarket) {
       return;
     }
 
@@ -72,7 +91,7 @@ export default function EventDetailClient({
       }
     };
 
-    const unsubscribeYes = createOrderBookSubscription(initialEvent.yes_spot_market, 10, {
+    const unsubscribeYes = createOrderBookSubscription(initialMarket.yes_spot_market, 10, {
       onBook: (book) => {
         setYesBook(book);
         yesLoaded = true;
@@ -83,7 +102,7 @@ export default function EventDetailClient({
         setBookLoading(false);
       },
     });
-    const unsubscribeNo = createOrderBookSubscription(initialEvent.no_spot_market, 10, {
+    const unsubscribeNo = createOrderBookSubscription(initialMarket.no_spot_market, 10, {
       onBook: (book) => {
         setNoBook(book);
         noLoaded = true;
@@ -99,10 +118,10 @@ export default function EventDetailClient({
       unsubscribeYes();
       unsubscribeNo();
     };
-  }, [initialEvent]);
+  }, [initialMarket]);
 
-  if (!initialEvent) {
-    return <p className="text-sm text-slate-500">Event not found.</p>;
+  if (!initialMarket) {
+    return <p className="text-sm text-slate-500">Market not found.</p>;
   }
 
   const activeBook = outcome === "yes" ? yesBook : noBook;
@@ -122,15 +141,17 @@ export default function EventDetailClient({
     setMessage(null);
 
     try {
-      for (const order of levelOrders) {
-        await api.cancelOrder(order.id);
-      }
-      await refreshOrders();
+      const cancelled = await Promise.all(
+        levelOrders.map((order) => api.cancelOrder(order.id)),
+      );
+      setOrders((prev) =>
+        cancelled.reduce((next, order) => upsertOrder(next, order), prev),
+      );
       requestPortfolioRefresh();
       setMessage(
         levelOrders.length === 1
-          ? "Order cancelled."
-          : `${levelOrders.length} orders cancelled.`,
+          ? "Cancel submitted."
+          : `${levelOrders.length} cancels submitted.`,
       );
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Cancel failed");
@@ -148,15 +169,17 @@ export default function EventDetailClient({
     setMessage(null);
 
     try {
-      for (const order of openOrders) {
-        await api.cancelOrder(order.id);
-      }
-      await refreshOrders();
+      const cancelled = await Promise.all(
+        openOrders.map((order) => api.cancelOrder(order.id)),
+      );
+      setOrders((prev) =>
+        cancelled.reduce((next, order) => upsertOrder(next, order), prev),
+      );
       requestPortfolioRefresh();
       setMessage(
         openOrders.length === 1
-          ? "Order cancelled."
-          : `${openOrders.length} orders cancelled.`,
+          ? "Cancel submitted."
+          : `${openOrders.length} cancels submitted.`,
       );
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Close all failed");
@@ -189,15 +212,15 @@ export default function EventDetailClient({
     setMessage(null);
     try {
       const order = await api.placeOrder({
-        event_slug: params.slug,
+        market_slug: params.slug,
         outcome,
         side,
         price,
         size,
         order_type: orderType,
       });
-      setMessage(`Order placed: ${order.id} (${order.status}).`);
-      await refreshOrders();
+      setOrders((prev) => upsertOrder(prev, order));
+      setMessage(`Order submitted: ${order.id} (${order.status}).`);
       requestPortfolioRefresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Order failed");
@@ -210,10 +233,10 @@ export default function EventDetailClient({
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div className="space-y-4">
         <MarketOutcomeSelector
-          question={initialEvent.question}
-          iconUrl={initialEvent.icon_url}
-          marketAddress={initialEvent.market_address}
-          state={initialEvent.state}
+          question={initialMarket.question}
+          iconUrl={initialMarket.icon_url}
+          marketAddress={initialMarket.market_address}
+          state={initialMarket.state}
           yesBook={yesBook}
           noBook={noBook}
           selectedOutcome={outcome}
