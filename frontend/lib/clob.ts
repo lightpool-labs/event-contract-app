@@ -4,6 +4,7 @@ const CLOB_INDEX_URL =
   process.env.NEXT_PUBLIC_CLOB_INDEX_URL ?? "http://127.0.0.1:3002";
 const CLOB_INDEX_WS_URL =
   process.env.NEXT_PUBLIC_CLOB_INDEX_WS_URL ?? "ws://127.0.0.1:3002";
+const BOOK_SNAPSHOT_REFRESH_MS = 60_000;
 
 export type OrderBookDelta = {
   type: "orderbook_delta";
@@ -203,6 +204,7 @@ export function createOrderBookSubscription(
   let closed = false;
   let currentBook: BookResponse | null = null;
   let socket: WebSocket | null = null;
+  let snapshotTimer: ReturnType<typeof setInterval> | null = null;
   let pending = false;
   let rafId: number | null = null;
 
@@ -219,7 +221,10 @@ export function createOrderBookSubscription(
     });
   }
 
-  async function start() {
+  async function syncBookSnapshot() {
+    if (closed) {
+      return;
+    }
     try {
       currentBook = await fetchBookSnapshot(spotMarket, depth);
       scheduleRender();
@@ -228,10 +233,18 @@ export function createOrderBookSubscription(
         error instanceof Error ? error : new Error("Failed to load order book"),
       );
     }
+  }
+
+  async function start() {
+    await syncBookSnapshot();
 
     if (closed) {
       return;
     }
+
+    snapshotTimer = setInterval(() => {
+      void syncBookSnapshot();
+    }, BOOK_SNAPSHOT_REFRESH_MS);
 
     socket = new WebSocket(`${CLOB_INDEX_WS_URL}/api/ws`);
     socket.onopen = () => {
@@ -288,6 +301,10 @@ export function createOrderBookSubscription(
     closed = true;
     if (rafId !== null) {
       window.cancelAnimationFrame(rafId);
+    }
+    if (snapshotTimer !== null) {
+      clearInterval(snapshotTimer);
+      snapshotTimer = null;
     }
     if (socket && socket.readyState <= WebSocket.OPEN) {
       try {
