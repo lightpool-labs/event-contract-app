@@ -33,12 +33,32 @@ function maxLevelSize(levels: BookLevel[]): number {
   return Math.max(...levels.map((level) => parseLevelSize(level.size)), 1);
 }
 
+function formatBookAmount(value: string | number): string {
+  const numeric =
+    typeof value === "string" ? Number.parseFloat(value) : value;
+  if (!Number.isFinite(numeric)) {
+    return "--";
+  }
+  return numeric.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function formatNotional(price: string, size: string): string {
   const notionalCents = parseLevelPrice(price) * parseLevelSize(size);
   if (!Number.isFinite(notionalCents) || notionalCents === 0) {
     return "--";
   }
-  return `$${(notionalCents / 100).toFixed(2)}`;
+  return `$${formatBookAmount(notionalCents / 100)}`;
+}
+
+function formatBookPrice(price: string): string {
+  const value = Number.parseFloat(price);
+  if (!Number.isFinite(value)) {
+    return price;
+  }
+  return String(value);
 }
 
 function formatSpread(bestBid: string | undefined, bestAsk: string | undefined): string | null {
@@ -52,9 +72,9 @@ function formatSpread(bestBid: string | undefined, bestAsk: string | undefined):
   }
   const spread = ask - bid;
   if (spread <= 0) {
-    return `${ask.toFixed(0)}¢`;
+    return `${formatBookPrice(String(ask))}¢`;
   }
-  return `${spread.toFixed(0)}¢ spread`;
+  return `${formatBookPrice(String(spread))}¢ spread`;
 }
 
 function CloseOrderButton({
@@ -125,11 +145,11 @@ function DepthRow({
       </td>
       <td className="h-6 p-0 align-middle pl-1 pr-2">
         <span className={["font-medium tabular-nums", textColor].join(" ")}>
-          {level.price}¢
+          {formatBookPrice(level.price)}¢
         </span>
       </td>
       <td className="h-6 p-0 align-middle pr-2 text-right">
-        <span className="tabular-nums text-slate-700">{level.size}</span>
+        <span className="tabular-nums text-slate-700">{formatBookAmount(level.size)}</span>
       </td>
       <td className="h-6 p-0 align-middle text-right">
         <span className="tabular-nums text-slate-600">{formatNotional(level.price, level.size)}</span>
@@ -153,7 +173,7 @@ function SpreadSection({
             <td colSpan={4} className="py-0.5">
               <div className="relative flex items-center">
                 <span className="text-xs font-semibold tabular-nums text-slate-900">
-                  {lastTradePrice ? `${lastTradePrice}¢` : "--"}
+                  {lastTradePrice ? `${formatBookPrice(lastTradePrice)}¢` : "--"}
                 </span>
                 {spreadLabel && (
                   <span className="absolute left-1/2 -translate-x-1/2 text-xs font-medium tabular-nums text-slate-500">
