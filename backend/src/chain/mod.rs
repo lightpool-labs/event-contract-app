@@ -5,7 +5,7 @@ use lightpool_sdk::{
     extract_event_contract_created_from_events, extract_token_address_from_events, ActionBuilder,
     Address, BurnEventContractParams, ContractAddress, CreateEventContractParams, CreateTokenParams,
     EventData, EventType, CancelOrderParams, MintEventContractParams,
-    PlaceOrderParams, SdkResult, Signer,
+    PlaceOrderParams, SdkError, SdkResult, Signer,
     TransactionBuilder, TOKEN_SCALE,
 };
 use std::sync::Arc;
@@ -399,10 +399,32 @@ pub struct LocalSignerService {
     address: Address,
 }
 
+fn load_signer_from_dev_secret_key(raw: &str) -> SdkResult<Signer> {
+    let trimmed = raw.trim();
+    let hex_body = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+        .unwrap_or(trimmed);
+
+    let is_hex = !hex_body.is_empty()
+        && hex_body.len() == 64
+        && hex_body.chars().all(|c| c.is_ascii_hexdigit());
+
+    if is_hex {
+        let bytes = hex::decode(hex_body)?;
+        let key_bytes: [u8; 32] = bytes.as_slice().try_into().map_err(|_| {
+            SdkError::Crypto("DEV_SECRET_KEY hex must decode to 32 bytes".into())
+        })?;
+        return Signer::from_secret_key_bytes(&key_bytes);
+    }
+
+    Signer::from_secret_key_base64(trimmed)
+}
+
 impl LocalSignerService {
     pub fn from_config(config: &Config) -> SdkResult<Self> {
         let signer = if let Some(encoded) = &config.dev_secret_key {
-            let signer = Signer::from_secret_key_base64(encoded.trim())?;
+            let signer = load_signer_from_dev_secret_key(encoded)?;
             tracing::info!(address = %signer.address(), "loaded dev signer from DEV_SECRET_KEY");
             signer
         } else {
@@ -410,7 +432,7 @@ impl LocalSignerService {
             tracing::warn!(
                 address = %signer.address(),
                 secret_key = %signer.export_secret_key(),
-                "DEV_SECRET_KEY not set; using ephemeral dev signer — add DEV_SECRET_KEY to .env to keep this address across restarts"
+                "DEV_SECRET_KEY not set; using ephemeral dev signer — add DEV_SECRET_KEY (hex or base64) to .env to keep this address across restarts"
             );
             signer
         };
