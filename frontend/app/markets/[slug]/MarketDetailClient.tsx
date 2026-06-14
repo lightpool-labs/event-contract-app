@@ -94,6 +94,7 @@ export default function MarketDetailClient({
     const unsubscribeYes = createOrderBookSubscription(initialMarket.yes_spot_market, 10, {
       onBook: (book) => {
         setYesBook(book);
+        setBookError(null);
         yesLoaded = true;
         markLoaded();
       },
@@ -105,6 +106,7 @@ export default function MarketDetailClient({
     const unsubscribeNo = createOrderBookSubscription(initialMarket.no_spot_market, 10, {
       onBook: (book) => {
         setNoBook(book);
+        setBookError(null);
         noLoaded = true;
         markLoaded();
       },
