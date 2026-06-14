@@ -116,7 +116,7 @@ impl ChainClient {
     ) -> AppResult<CreateEventContractResult> {
         let sender = signer.address();
         let params = CreateEventContractParams {
-            question_hash: question_hash(question),
+            question: question.to_string(),
             oracle,
             collateral_token,
             resolution_deadline,
@@ -371,20 +371,8 @@ pub fn extract_order_created_from_receipt(
     None
 }
 
-fn question_hash(question: &str) -> [u8; 32] {
-    compute_question_hash(question)
-}
-
 pub fn market_uuid(market_address: &str) -> Uuid {
     Uuid::new_v5(&Uuid::NAMESPACE_OID, market_address.as_bytes())
-}
-
-pub fn compute_question_hash(question: &str) -> [u8; 32] {
-    let mut hash = [0u8; 32];
-    let bytes = question.as_bytes();
-    let len = bytes.len().min(32);
-    hash[..len].copy_from_slice(&bytes[..len]);
-    hash
 }
 
 /// Signing abstraction — swap implementation when wallet integration lands.

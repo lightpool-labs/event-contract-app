@@ -27,11 +27,6 @@ struct ReadyResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct SlugResponse {
-    slug: String,
-}
-
-#[derive(Debug, Deserialize)]
 struct CancelContextResponse {
     order: Order,
     chain_order_id: String,
@@ -175,43 +170,6 @@ impl ClobIndexClient {
 
     pub async fn get_market_by_slug(&self, slug: &str) -> AppResult<Market> {
         self.get_json(&format!("/api/markets/slug/{slug}")).await
-    }
-
-    pub async fn register_question(
-        &self,
-        question: &str,
-        slug: &str,
-        icon_url: Option<&str>,
-    ) -> AppResult<()> {
-        #[derive(Serialize)]
-        struct Body<'a> {
-            question: &'a str,
-            slug: &'a str,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            icon_url: Option<&'a str>,
-        }
-        let _: serde_json::Value = self
-            .post_json(
-                "/api/markets/index/register-question",
-                &Body {
-                    question,
-                    slug,
-                    icon_url,
-                },
-            )
-            .await?;
-        Ok(())
-    }
-
-    pub async fn allocate_slug(&self, question: &str) -> AppResult<String> {
-        #[derive(Serialize)]
-        struct Body<'a> {
-            question: &'a str,
-        }
-        let response: SlugResponse = self
-            .post_json("/api/markets/index/allocate-slug", &Body { question })
-            .await?;
-        Ok(response.slug)
     }
 
     pub async fn position_token_specs(&self) -> AppResult<Vec<BalanceTokenSpec>> {

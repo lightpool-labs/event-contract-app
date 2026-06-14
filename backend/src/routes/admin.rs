@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::time::Duration;
 
 use axum::{extract::State, routing::{get, post}, Json, Router};
 use serde::Serialize;
@@ -7,7 +8,7 @@ use crate::error::{AppError, AppResult};
 use crate::chain::market_uuid;
 use crate::models::{
     CreateEventContractRequest, CreateEventContractResponse, CreateTokenRequest,
-    CreateTokenResponse, Market,
+    CreateTokenResponse, Market, QueryMarketsParams,
 };
 use crate::state::AppState;
 use lightpool_sdk::{parse_token_contract, Address};
@@ -113,11 +114,6 @@ async fn create_event_contract(
     let allow_market_orders = body.allow_market_orders.unwrap_or(true);
 
     let icon_url = normalize_icon_url(body.icon_url.as_deref());
-    let slug = state.clob.allocate_slug(question).await?;
-    state
-        .clob
-        .register_question(question, &slug, icon_url.as_deref())
-        .await?;
 
     let result = state
         .chain
@@ -146,6 +142,7 @@ async fn create_event_contract(
     }
 
     let market_address = result.market_address.to_string();
+    let slug = resolve_market_slug(&state, &market_address, question).await;
     let market = Market {
         id: market_uuid(&market_address),
         slug: slug.clone(),
@@ -207,4 +204,24 @@ fn normalize_icon_url(icon_url: Option<&str>) -> Option<String> {
         return None;
     }
     Some(value.to_string())
+}
+
+async fn resolve_market_slug(state: &AppState, market_address: &str, question: &str) -> String {
+    for _ in 0..10 {
+        if let Ok(page) = state
+            .clob
+            .query_markets(&QueryMarketsParams {
+                market_addresses: Some(market_address.to_string()),
+                limit: Some(1),
+                ..QueryMarketsParams::default()
+            })
+            .await
+        {
+            if let Some(market) = page.markets.first() {
+                return market.slug.clone();
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    crate::slug::slug_from_question(question)
 }
