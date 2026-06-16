@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo } from "react";
+import { formatPriceCents, subtractPriceCents } from "@/lib/price";
 import type { BookLevel, BookResponse, Order } from "@/lib/types";
 import { bookLevelKey, ordersAtBookLevel } from "@/lib/orders";
 
 type OrderBookProps = {
   book: BookResponse | null;
   outcome: "yes" | "no";
+  tickSize: string;
   openOrders?: Order[];
   loading?: boolean;
   error?: string | null;
@@ -53,28 +55,29 @@ function formatNotional(price: string, size: string): string {
   return `$${formatBookAmount(notionalCents / 100)}`;
 }
 
-function formatBookPrice(price: string): string {
-  const value = Number.parseFloat(price);
-  if (!Number.isFinite(value)) {
-    return price;
-  }
-  return String(value);
-}
-
-function formatSpread(bestBid: string | undefined, bestAsk: string | undefined): string | null {
+function formatSpread(
+  bestBid: string | undefined,
+  bestAsk: string | undefined,
+  tickSize: string,
+): string | null {
   if (!bestBid || !bestAsk) {
     return null;
   }
-  const bid = Number.parseFloat(bestBid);
-  const ask = Number.parseFloat(bestAsk);
-  if (!Number.isFinite(bid) || !Number.isFinite(ask)) {
+
+  const spread = subtractPriceCents(bestAsk, bestBid, tickSize);
+  if (!spread) {
     return null;
   }
-  const spread = ask - bid;
-  if (spread <= 0) {
-    return `${formatBookPrice(String(ask))}¢`;
+
+  const spreadParsed = Number.parseFloat(spread);
+  if (!Number.isFinite(spreadParsed)) {
+    return null;
   }
-  return `${formatBookPrice(String(spread))}¢ spread`;
+
+  if (spreadParsed <= 0) {
+    return `${formatPriceCents(bestAsk, tickSize)}¢`;
+  }
+  return `${spread}¢ spread`;
 }
 
 function CloseOrderButton({
@@ -102,6 +105,7 @@ type DepthRowProps = {
   level: BookLevel;
   side: "ask" | "bid";
   maxSize: number;
+  tickSize: string;
   levelOrders: Order[];
   cancelling: boolean;
   onCancelLevel?: (orders: Order[]) => void;
@@ -111,6 +115,7 @@ function DepthRow({
   level,
   side,
   maxSize,
+  tickSize,
   levelOrders,
   cancelling,
   onCancelLevel,
@@ -145,7 +150,7 @@ function DepthRow({
       </td>
       <td className="h-6 p-0 align-middle pl-1 pr-2">
         <span className={["font-medium tabular-nums", textColor].join(" ")}>
-          {formatBookPrice(level.price)}¢
+          {formatPriceCents(level.price, tickSize)}¢
         </span>
       </td>
       <td className="h-6 p-0 align-middle pr-2 text-right">
@@ -161,26 +166,29 @@ function DepthRow({
 function SpreadSection({
   lastTradePrice,
   spreadLabel,
+  tickSize,
 }: {
   lastTradePrice: string | null;
   spreadLabel: string | null;
+  tickSize: string;
 }) {
   return (
     <div className="my-2 border-y border-slate-100 py-2">
-      <table className="w-full table-fixed">
+      <table className="w-full table-fixed border-collapse">
         <tbody>
           <tr>
-            <td colSpan={4} className="py-0.5">
-              <div className="relative flex items-center">
-                <span className="text-xs font-semibold tabular-nums text-slate-900">
-                  {lastTradePrice ? `${formatBookPrice(lastTradePrice)}¢` : "--"}
+            <td className="w-1/2" />
+            <td className="w-[17%] py-0.5 pl-1 pr-2">
+              <span className="text-xs font-semibold tabular-nums text-slate-900">
+                {lastTradePrice ? `${formatPriceCents(lastTradePrice, tickSize)}¢` : "--"}
+              </span>
+            </td>
+            <td colSpan={2} className="py-0.5 text-center">
+              {spreadLabel && (
+                <span className="text-xs font-medium tabular-nums text-slate-500">
+                  {spreadLabel}
                 </span>
-                {spreadLabel && (
-                  <span className="absolute left-1/2 -translate-x-1/2 text-xs font-medium tabular-nums text-slate-500">
-                    {spreadLabel}
-                  </span>
-                )}
-              </div>
+              )}
             </td>
           </tr>
         </tbody>
@@ -192,6 +200,7 @@ function SpreadSection({
 export function OrderBook({
   book,
   outcome,
+  tickSize,
   openOrders = [],
   loading = false,
   error = null,
@@ -207,7 +216,7 @@ export function OrderBook({
 
   const bestBid = bids[0]?.price;
   const bestAsk = book?.asks[0]?.price;
-  const spreadLabel = formatSpread(bestBid, bestAsk);
+  const spreadLabel = formatSpread(bestBid, bestAsk, tickSize);
   const lastTradePrice = book?.last_trade_price ?? null;
   const tradeLabel = outcome === "yes" ? "TRADE YES" : "TRADE NO";
 
@@ -259,6 +268,7 @@ export function OrderBook({
                       level={level}
                       side="ask"
                       maxSize={maxSize}
+                      tickSize={tickSize}
                       levelOrders={levelOrders}
                       cancelling={cancellingLevelKey === bookLevelKey("ask", level.price)}
                       onCancelLevel={onCancelLevel}
@@ -275,7 +285,11 @@ export function OrderBook({
               </tbody>
             </table>
 
-            <SpreadSection lastTradePrice={lastTradePrice} spreadLabel={spreadLabel} />
+            <SpreadSection
+              lastTradePrice={lastTradePrice}
+              spreadLabel={spreadLabel}
+              tickSize={tickSize}
+            />
 
             <table className="w-full table-fixed border-collapse">
               <tbody>
@@ -287,6 +301,7 @@ export function OrderBook({
                       level={level}
                       side="bid"
                       maxSize={maxSize}
+                      tickSize={tickSize}
                       levelOrders={levelOrders}
                       cancelling={cancellingLevelKey === bookLevelKey("bid", level.price)}
                       onCancelLevel={onCancelLevel}

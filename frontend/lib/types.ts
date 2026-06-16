@@ -10,6 +10,16 @@ export type BookResponse = {
   last_trade_price?: string | null;
 };
 
+export type MarketInfo = {
+  last_price: string | null;
+  state: string;
+  min_order_size: string;
+  tick_size: string;
+  maker_fee_bps: number;
+  taker_fee_bps: number;
+  allow_market_orders: boolean;
+};
+
 export type Market = {
   id: string;
   slug: string;

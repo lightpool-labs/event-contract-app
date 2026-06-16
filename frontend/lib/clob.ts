@@ -1,4 +1,4 @@
-import type { BookLevel, BookResponse, Order } from "@/lib/types";
+import type { BookLevel, BookResponse, MarketInfo, Order } from "@/lib/types";
 
 const CLOB_INDEX_URL =
   process.env.NEXT_PUBLIC_CLOB_INDEX_URL ?? "http://127.0.0.1:3002";
@@ -173,6 +173,23 @@ export async function fetchUserOrders(userAddress: string): Promise<Order[]> {
   }
 
   return res.json() as Promise<Order[]>;
+}
+
+export async function fetchMarketInfo(
+  spotMarket: string,
+  account: string,
+): Promise<MarketInfo> {
+  const res = await fetch(
+    `${CLOB_INDEX_URL}/api/spot/${spotMarketPath(spotMarket)}/info?account=${encodeURIComponent(account)}`,
+    { cache: "no-store" },
+  );
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? `Failed to load market info: ${res.status}`);
+  }
+
+  return res.json() as Promise<MarketInfo>;
 }
 
 export async function fetchBookSnapshot(

@@ -12,6 +12,7 @@ type PlaceOrderPanelProps = {
   orderType: OrderType;
   price: string;
   size: string;
+  tickSize: string;
   loading: boolean;
   message: string | null;
   onSideChange: (side: OrderSide) => void;
@@ -87,6 +88,7 @@ export function PlaceOrderPanel({
   orderType,
   price,
   size,
+  tickSize,
   loading,
   message,
   onSideChange,
@@ -120,8 +122,9 @@ export function PlaceOrderPanel({
               type="number"
               min="0"
               max="100"
-              step="1"
-              className="w-full rounded-lg border border-sky-100 px-3 py-2.5 outline-none ring-sky-200 focus:border-sky-400 focus:ring-2"
+              step="any"
+              inputMode="decimal"
+              className="w-full rounded-lg border border-sky-100 px-3 py-2.5 tabular-nums outline-none ring-sky-200 focus:border-sky-400 focus:ring-2"
               value={price}
               onChange={(e) => onPriceChange(e.target.value)}
             />

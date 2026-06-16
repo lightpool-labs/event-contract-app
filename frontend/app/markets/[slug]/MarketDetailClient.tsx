@@ -7,6 +7,7 @@ import { PlaceOrderPanel } from "@/components/PlaceOrderPanel";
 import {
   createOrderBookSubscription,
   createUserOrdersSubscription,
+  fetchMarketInfo,
   upsertOrder,
 } from "@/lib/clob";
 import { api } from "@/lib/api";
@@ -41,6 +42,7 @@ export default function MarketDetailClient({
   const [orders, setOrders] = useState<Order[]>([]);
   const [closeAllLoading, setCloseAllLoading] = useState(false);
   const [cancellingLevelKey, setCancellingLevelKey] = useState<string | null>(null);
+  const [tickSize, setTickSize] = useState("0.01");
 
   useEffect(() => {
     setOutcome(initialOutcome);
@@ -121,6 +123,39 @@ export default function MarketDetailClient({
       unsubscribeNo();
     };
   }, [initialMarket]);
+
+  useEffect(() => {
+    if (!initialMarket) {
+      return;
+    }
+
+    const spotMarket =
+      outcome === "yes" ? initialMarket.yes_spot_market : initialMarket.no_spot_market;
+    let cancelled = false;
+
+    async function loadTickSize() {
+      try {
+        const account = await api.getAccount();
+        if (cancelled) {
+          return;
+        }
+        const info = await fetchMarketInfo(spotMarket, account.address);
+        if (!cancelled) {
+          setTickSize(info.tick_size);
+        }
+      } catch {
+        if (!cancelled) {
+          setTickSize("0.01");
+        }
+      }
+    }
+
+    void loadTickSize();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialMarket, outcome]);
 
   if (!initialMarket) {
     return <p className="text-sm text-slate-500">Market not found.</p>;
@@ -249,6 +284,7 @@ export default function MarketDetailClient({
         <OrderBook
           book={activeBook}
           outcome={outcome}
+          tickSize={tickSize}
           openOrders={openOrders}
           loading={bookLoading}
           error={bookError}
@@ -269,6 +305,7 @@ export default function MarketDetailClient({
         orderType={orderType}
         price={price}
         size={size}
+        tickSize={tickSize}
         loading={loading}
         message={message}
         onSideChange={setSide}
