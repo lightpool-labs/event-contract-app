@@ -246,7 +246,22 @@ impl ClobIndexClient {
         Ok(())
     }
 
-    pub async fn index_order_from_event(&self, event: OrderCreatedEvent) -> AppResult<Order> {
-        self.post_json("/api/orders/index/from-event", &event).await
+    pub async fn index_order_from_event(
+        &self,
+        event: OrderCreatedEvent,
+        skip_book: bool,
+        status: &str,
+        filled_raw: u64,
+    ) -> AppResult<Order> {
+        self.post_json(
+            "/api/orders/index/from-event",
+            &serde_json::json!({
+                "event": event,
+                "skip_book": skip_book,
+                "status": status,
+                "filled_raw": filled_raw,
+            }),
+        )
+        .await
     }
 }

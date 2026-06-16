@@ -10,7 +10,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::chain::{
-    extract_order_created_from_receipt, parse_order_size, parse_price_pieces,
+    parse_order_size, parse_price_pieces, PlaceOrderPlacementContext, resolve_placed_order_from_receipt,
 };
 use crate::error::{AppError, AppResult};
 use crate::models::Order;
@@ -103,6 +103,8 @@ async fn place_order(
         .await
         .map_err(|e| AppError::Internal(format!("signer unavailable: {e}")))?;
 
+    let user = state.signer.user_address().await;
+
     let params = PlaceOrderParams {
         side,
         amount,
@@ -116,11 +118,29 @@ async fn place_order(
         .place_order(&signer, spot_market, params)
         .await?;
 
-    let created = extract_order_created_from_receipt(&response.receipt).ok_or_else(|| {
-        AppError::Internal("order_created event missing from place_order receipt".into())
-    })?;
+    let placement_ctx = PlaceOrderPlacementContext {
+        user,
+        spot_market,
+        side,
+        amount,
+        limit_price,
+        is_market,
+        slippage: 500,
+    };
 
-    let order = state.clob.index_order_from_event(created).await?;
+    let resolved = resolve_placed_order_from_receipt(&response.receipt, &placement_ctx).ok_or_else(
+        || AppError::Internal("order_created event missing from place_order receipt".into()),
+    )?;
+
+    let order = state
+        .clob
+        .index_order_from_event(
+            resolved.created,
+            resolved.skip_book,
+            &resolved.status,
+            resolved.filled_raw,
+        )
+        .await?;
 
     Ok(Json(order))
 }

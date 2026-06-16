@@ -1,12 +1,14 @@
 use async_trait::async_trait;
-use lightpool_sdk::spot_events::OrderCreatedEvent;
+use lightpool_sdk::spot_events::{
+    MarketOrderExecutedEvent, OrderCreatedEvent, OrderEventType, OrderFilledEvent,
+};
 use lightpool_sdk::types::SubmitTransactionResponse;
 use lightpool_sdk::{
     extract_event_contract_created_from_events, extract_token_address_from_events, ActionBuilder,
     Address, BurnEventContractParams, ContractAddress, CreateEventContractParams, CreateTokenParams,
     EventData, EventType, CancelOrderParams, MintEventContractParams,
-    PlaceOrderParams, SdkError, SdkResult, Signer,
-    TransactionBuilder, TOKEN_SCALE,
+    OrderSide, PlaceOrderParams, SdkError, SdkResult, Signer,
+    TimeInForce, TransactionBuilder, TransactionReceipt, TOKEN_SCALE,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -322,18 +324,66 @@ pub fn format_token_amount(raw: u64) -> String {
 }
 
 pub fn format_price_pieces(raw: u64) -> String {
-    ((raw.saturating_mul(100)) / TOKEN_SCALE).to_string()
+    let numerator = raw.saturating_mul(100);
+    let whole = numerator / TOKEN_SCALE;
+    let frac = numerator % TOKEN_SCALE;
+    if frac == 0 {
+        return whole.to_string();
+    }
+    let frac_str = format!("{frac:06}");
+    let trimmed = frac_str.trim_end_matches('0');
+    format!("{whole}.{trimmed}")
 }
 
 pub fn parse_price_pieces(price: &str) -> AppResult<u64> {
-    let pieces: u64 = price
-        .trim()
+    let trimmed = price.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::BadRequest("invalid price".into()));
+    }
+
+    let (whole_str, frac_str) = match trimmed.split_once('.') {
+        Some((whole, frac)) => (whole, frac),
+        None => (trimmed, ""),
+    };
+
+    if whole_str.is_empty() || !whole_str.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(format!("invalid price: {price}")));
+    }
+    if !frac_str.is_empty() && !frac_str.chars().all(|c| c.is_ascii_digit()) {
+        return Err(AppError::BadRequest(format!("invalid price: {price}")));
+    }
+    if frac_str.len() > 6 {
+        return Err(AppError::BadRequest(format!("invalid price: {price}")));
+    }
+
+    let whole: u64 = whole_str
         .parse()
         .map_err(|e| AppError::BadRequest(format!("invalid price: {e}")))?;
-    if pieces > 100 {
+    if whole > 100
+        || (whole == 100 && !frac_str.is_empty() && frac_str.chars().any(|c| c != '0'))
+    {
         return Err(AppError::BadRequest("price must be between 0 and 100".into()));
     }
-    Ok((pieces * TOKEN_SCALE) / 100)
+
+    let frac: u64 = if frac_str.is_empty() {
+        0
+    } else {
+        frac_str
+            .parse()
+            .map_err(|e| AppError::BadRequest(format!("invalid price: {e}")))?
+    };
+
+    let frac_digits = frac_str.len() as u32;
+    let scale = 10_u64.pow(frac_digits);
+    let cent_numerator = whole
+        .checked_mul(scale)
+        .and_then(|value| value.checked_add(frac))
+        .ok_or_else(|| AppError::BadRequest(format!("invalid price: {price}")))?;
+
+    cent_numerator
+        .checked_mul(TOKEN_SCALE)
+        .and_then(|value| value.checked_div(100 * scale))
+        .ok_or_else(|| AppError::BadRequest(format!("invalid price: {price}")))
 }
 
 pub fn parse_order_size(size: &str) -> AppResult<u64> {
@@ -352,7 +402,7 @@ pub fn parse_order_size(size: &str) -> AppResult<u64> {
 }
 
 pub fn extract_order_created_from_receipt(
-    receipt: &lightpool_sdk::TransactionReceipt,
+    receipt: &TransactionReceipt,
 ) -> Option<OrderCreatedEvent> {
     for event in &receipt.events {
         let EventType::Call(action_name) = &event.event_type else {
@@ -369,6 +419,155 @@ pub fn extract_order_created_from_receipt(
         }
     }
     None
+}
+
+pub struct PlaceOrderPlacementContext {
+    pub user: Address,
+    pub spot_market: ContractAddress,
+    pub side: OrderSide,
+    pub amount: u64,
+    pub limit_price: u64,
+    pub is_market: bool,
+    pub slippage: u64,
+}
+
+pub struct ResolvedPlaceOrder {
+    pub created: OrderCreatedEvent,
+    pub skip_book: bool,
+    pub status: String,
+    pub filled_raw: u64,
+}
+
+pub fn resolve_placed_order_from_receipt(
+    receipt: &TransactionReceipt,
+    ctx: &PlaceOrderPlacementContext,
+) -> Option<ResolvedPlaceOrder> {
+    if let Some(created) = extract_order_created_from_receipt(receipt) {
+        return Some(ResolvedPlaceOrder {
+            created,
+            skip_book: false,
+            status: "open".into(),
+            filled_raw: 0,
+        });
+    }
+
+    if ctx.is_market {
+        if let Some(exec) = extract_market_order_executed_for_user(receipt, ctx.user) {
+            let status = if exec.filled_amount >= exec.amount {
+                "filled"
+            } else {
+                "partial_filled"
+            };
+            return Some(ResolvedPlaceOrder {
+                created: OrderCreatedEvent {
+                    order_id: exec.order_id,
+                    side: exec.side,
+                    amount: exec.amount,
+                    creator: exec.creator,
+                    market: ctx.spot_market.to_address(),
+                    order_type: OrderEventType::Market {
+                        slippage: ctx.slippage,
+                    },
+                },
+                skip_book: true,
+                status: status.into(),
+                filled_raw: exec.filled_amount,
+            });
+        }
+    }
+
+    if let Some((filled, filled_raw)) = extract_taker_order_filled_for_user(receipt, ctx.user) {
+        let amount = filled.fill_amount.saturating_add(filled.remaining_amount);
+        let status = if filled.is_fully_filled || filled.remaining_amount == 0 {
+            "filled"
+        } else {
+            "partial_filled"
+        };
+        return Some(ResolvedPlaceOrder {
+            created: OrderCreatedEvent {
+                order_id: filled.order_id,
+                side: filled.side,
+                amount,
+                creator: ctx.user,
+                market: ctx.spot_market.to_address(),
+                order_type: OrderEventType::Limit {
+                    price: ctx.limit_price,
+                    tif: TimeInForce::GTC,
+                },
+            },
+            skip_book: true,
+            status: status.into(),
+            filled_raw,
+        });
+    }
+
+    None
+}
+
+fn event_sender_matches(event: &lightpool_sdk::TransactionEvent, user: Address) -> bool {
+    event.sender == Some(user)
+}
+
+fn extract_market_order_executed_for_user(
+    receipt: &TransactionReceipt,
+    user: Address,
+) -> Option<MarketOrderExecutedEvent> {
+    for event in &receipt.events {
+        if !event_sender_matches(event, user) {
+            continue;
+        }
+        let EventType::Call(action_name) = &event.event_type else {
+            continue;
+        };
+        if action_name.as_str() != "market_order_executed" {
+            continue;
+        }
+        let EventData::Bytes(data) = &event.data else {
+            continue;
+        };
+        if let Ok(exec) = bincode::deserialize::<MarketOrderExecutedEvent>(data) {
+            return Some(exec);
+        }
+    }
+    None
+}
+
+fn extract_taker_order_filled_for_user(
+    receipt: &TransactionReceipt,
+    user: Address,
+) -> Option<(OrderFilledEvent, u64)> {
+    let mut last: Option<OrderFilledEvent> = None;
+    let mut filled_raw = 0_u64;
+
+    for event in &receipt.events {
+        if !event_sender_matches(event, user) {
+            continue;
+        }
+        let EventType::Call(action_name) = &event.event_type else {
+            continue;
+        };
+        if action_name.as_str() != "order_filled" {
+            continue;
+        }
+        let EventData::Bytes(data) = &event.data else {
+            continue;
+        };
+        let Ok(filled) = bincode::deserialize::<OrderFilledEvent>(data) else {
+            continue;
+        };
+
+        if last
+            .as_ref()
+            .is_some_and(|previous| previous.order_id != filled.order_id)
+        {
+            continue;
+        }
+
+        filled_raw = filled_raw.saturating_add(filled.fill_amount);
+        last = Some(filled);
+    }
+
+    last.map(|filled| (filled, filled_raw))
 }
 
 pub fn market_uuid(market_address: &str) -> Uuid {
