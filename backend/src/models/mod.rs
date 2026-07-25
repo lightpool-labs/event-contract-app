@@ -1,3 +1,6 @@
+// Copyright (c) LightPool Labs
+// Author: xiaoyu1998
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -128,6 +131,39 @@ pub struct QueryMarketsParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarketsPage {
     pub markets: Vec<Market>,
+    pub total: usize,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Vault {
+    pub id: Uuid,
+    pub vault_address: String,
+    pub vault_account: String,
+    pub manager: String,
+    pub quote_token: String,
+    pub share_token: String,
+    pub equity: String,
+    pub allow_deposit: bool,
+    pub is_closed: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct QueryVaultsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manager: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault_addresses: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultsPage {
+    pub vaults: Vec<Vault>,
     pub total: usize,
     pub limit: u32,
     pub offset: u32,

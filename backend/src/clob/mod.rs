@@ -1,3 +1,6 @@
+// Copyright (c) LightPool Labs
+// Author: xiaoyu1998
+
 use lightpool_sdk::lightpool_types::SignedTransaction;
 use lightpool_sdk::spot_events::OrderCreatedEvent;
 use lightpool_sdk::types::SubmitTransactionResponse;
@@ -7,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{BalanceEntry, Market, MarketsPage, Order, QueryMarketsParams};
+use crate::models::{BalanceEntry, Market, MarketsPage, Order, QueryMarketsParams, QueryVaultsParams, Vault, VaultsPage};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BalanceTokenSpec {
@@ -170,6 +173,40 @@ impl ClobIndexClient {
 
     pub async fn get_market_by_slug(&self, slug: &str) -> AppResult<Market> {
         self.get_json(&format!("/api/markets/slug/{slug}")).await
+    }
+
+    pub async fn query_vaults(&self, params: &QueryVaultsParams) -> AppResult<VaultsPage> {
+        self.get_json_with_query("/api/vaults", params).await
+    }
+
+    pub async fn fetch_all_vaults(&self) -> AppResult<Vec<Vault>> {
+        const PAGE_LIMIT: u32 = 100;
+        let mut offset = 0u32;
+        let mut vaults = Vec::new();
+
+        loop {
+            let page = self
+                .query_vaults(&QueryVaultsParams {
+                    limit: Some(PAGE_LIMIT),
+                    offset: Some(offset),
+                    ..QueryVaultsParams::default()
+                })
+                .await?;
+
+            let page_len = page.vaults.len();
+            vaults.extend(page.vaults);
+            if vaults.len() >= page.total || page_len == 0 {
+                break;
+            }
+            offset = offset.saturating_add(PAGE_LIMIT);
+        }
+
+        Ok(vaults)
+    }
+
+    pub async fn get_vault_by_address(&self, address: &str) -> AppResult<Vault> {
+        self.get_json(&format!("/api/vaults/address/{address}"))
+            .await
     }
 
     pub async fn position_token_specs(&self) -> AppResult<Vec<BalanceTokenSpec>> {
