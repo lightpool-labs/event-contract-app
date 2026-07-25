@@ -11,6 +11,8 @@ import type {
   MintBurnResponse,
   Order,
   PlaceOrderRequest,
+  Vault,
+  VaultsPage,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3001/api";
@@ -127,6 +129,46 @@ export const api = {
     return request<MarketsPage>(`/markets${query ? `?${query}` : ""}`);
   },
   getMarket: (slug: string) => request<Market>(`/markets/${slug}`),
+  listVaults: async (params?: {
+    limit?: number;
+    offset?: number;
+    manager?: string;
+  }) => {
+    if (!params) {
+      const all: Vault[] = [];
+      const limit = 100;
+      let offset = 0;
+
+      while (true) {
+        const page = await request<VaultsPage>(
+          `/vaults?limit=${limit}&offset=${offset}`,
+        );
+        all.push(...page.vaults);
+        if (all.length >= page.total || page.vaults.length < limit) {
+          break;
+        }
+        offset += limit;
+      }
+
+      return all;
+    }
+
+    const search = new URLSearchParams();
+    if (params.limit !== undefined) {
+      search.set("limit", String(params.limit));
+    }
+    if (params.offset !== undefined) {
+      search.set("offset", String(params.offset));
+    }
+    if (params.manager) {
+      search.set("manager", params.manager);
+    }
+
+    const query = search.toString();
+    const page = await request<VaultsPage>(`/vaults${query ? `?${query}` : ""}`);
+    return page.vaults;
+  },
+  getVault: (address: string) => request<Vault>(`/vaults/${address}`),
   listOrders: () => request<Order[]>("/orders"),
   placeOrder: (body: PlaceOrderRequest) =>
     request<Order>("/orders", { method: "POST", body: JSON.stringify(body) }),

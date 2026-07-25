@@ -42,6 +42,25 @@ export type MarketsPage = {
   offset: number;
 };
 
+export type Vault = {
+  id: string;
+  vault_address: string;
+  vault_account: string;
+  manager: string;
+  quote_token: string;
+  share_token: string;
+  equity: string;
+  allow_deposit: boolean;
+  is_closed: boolean;
+};
+
+export type VaultsPage = {
+  vaults: Vault[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 export type Order = {
   id: string;
   market_id: string;

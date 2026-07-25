@@ -23,6 +23,26 @@ export function Nav({ portfolio, cash, userAddress }: NavProps) {
           LightPool Events
         </Link>
         <nav className="flex items-center gap-4 text-sm">
+          <Link
+            href="/"
+            className={
+              pathname === "/" || pathname.startsWith("/markets")
+                ? "font-medium text-sky-700"
+                : "text-slate-600 hover:text-sky-700"
+            }
+          >
+            Markets
+          </Link>
+          <Link
+            href="/vaults"
+            className={
+              pathname === "/vaults" || pathname.startsWith("/vaults/")
+                ? "font-medium text-sky-700"
+                : "text-slate-600 hover:text-sky-700"
+            }
+          >
+            Vaults
+          </Link>
           <span className="text-slate-600">
             Portfolio {portfolioLabel(portfolio)}
           </span>
