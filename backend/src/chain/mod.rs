@@ -9,9 +9,10 @@ use lightpool_sdk::types::SubmitTransactionResponse;
 use lightpool_sdk::{
     extract_event_contract_created_from_events, extract_token_address_from_events, ActionBuilder,
     Address, BurnEventContractParams, ContractAddress, CreateEventContractParams, CreateTokenParams,
-    EventData, EventType, CancelOrderParams, MintEventContractParams,
+    DepositVaultParams, EventData, EventType, CancelOrderParams, MintEventContractParams,
     OrderSide, PlaceOrderParams, SdkError, SdkResult, Signer,
-    TimeInForce, TransactionBuilder, TransactionReceipt, TOKEN_SCALE,
+    TimeInForce, TransactionBuilder, TransactionReceipt, VaultDepositedEvent, VaultWithdrawnEvent,
+    WithdrawVaultParams, TOKEN_SCALE,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -40,6 +41,12 @@ pub struct CreateEventContractResult {
 pub struct MintBurnResult {
     pub tx_digest: String,
     pub amount: u64,
+}
+
+pub struct VaultDepositWithdrawResult {
+    pub tx_digest: String,
+    pub amount: u64,
+    pub shares: u64,
 }
 
 pub struct ChainClient {
@@ -255,6 +262,94 @@ impl ChainClient {
         })
     }
 
+    pub async fn deposit_vault(
+        &self,
+        signer: &Signer,
+        vault_address: ContractAddress,
+        quote_token: ContractAddress,
+        share_token: ContractAddress,
+        amount: u64,
+    ) -> AppResult<VaultDepositWithdrawResult> {
+        let sender = signer.address();
+        let params = DepositVaultParams {
+            amount,
+            quote_token,
+            share_token,
+        };
+
+        let action = ActionBuilder::deposit_vault(vault_address, params)
+            .map_err(|e| AppError::Internal(format!("build deposit_vault action: {e}")))?;
+
+        let tx = TransactionBuilder::new()
+            .sender(sender)
+            .expiration(u64::MAX)
+            .add_action(action)
+            .build_and_sign_only(signer)
+            .map_err(|e| AppError::Internal(format!("sign deposit_vault tx: {e}")))?;
+
+        let response = self.submit_transaction(tx).await?;
+
+        if !response.receipt.is_success() {
+            return Err(AppError::Internal(format!(
+                "deposit_vault failed: {:?}",
+                response.receipt.status
+            )));
+        }
+
+        let (amount, shares) = extract_vault_deposit_amounts(&response.receipt)
+            .unwrap_or((amount, 0));
+
+        Ok(VaultDepositWithdrawResult {
+            tx_digest: response.digest,
+            amount,
+            shares,
+        })
+    }
+
+    pub async fn withdraw_vault(
+        &self,
+        signer: &Signer,
+        vault_address: ContractAddress,
+        quote_token: ContractAddress,
+        share_token: ContractAddress,
+        shares: u64,
+    ) -> AppResult<VaultDepositWithdrawResult> {
+        let sender = signer.address();
+        let params = WithdrawVaultParams {
+            shares,
+            quote_token,
+            share_token,
+        };
+
+        let action = ActionBuilder::withdraw_vault(vault_address, params)
+            .map_err(|e| AppError::Internal(format!("build withdraw_vault action: {e}")))?;
+
+        let tx = TransactionBuilder::new()
+            .sender(sender)
+            .expiration(u64::MAX)
+            .add_action(action)
+            .build_and_sign_only(signer)
+            .map_err(|e| AppError::Internal(format!("sign withdraw_vault tx: {e}")))?;
+
+        let response = self.submit_transaction(tx).await?;
+
+        if !response.receipt.is_success() {
+            return Err(AppError::Internal(format!(
+                "withdraw_vault failed: {:?}",
+                response.receipt.status
+            )));
+        }
+
+        let (amount, shares) = extract_vault_withdraw_amounts(&response.receipt)
+            .unwrap_or((0, shares));
+
+        Ok(VaultDepositWithdrawResult {
+            tx_digest: response.digest,
+            amount,
+            shares,
+        })
+    }
+
     pub async fn place_order(
         &self,
         signer: &Signer,
@@ -402,6 +497,42 @@ pub fn parse_order_size(size: &str) -> AppResult<u64> {
         return Err(AppError::BadRequest("size must be greater than 0".into()));
     }
     Ok(raw)
+}
+
+fn extract_vault_deposit_amounts(receipt: &TransactionReceipt) -> Option<(u64, u64)> {
+    for event in &receipt.events {
+        let EventType::Call(action_name) = &event.event_type else {
+            continue;
+        };
+        if action_name.as_str() != "vault_deposited" {
+            continue;
+        }
+        let EventData::Bytes(data) = &event.data else {
+            continue;
+        };
+        if let Ok(deposited) = bincode::deserialize::<VaultDepositedEvent>(data) {
+            return Some((deposited.amount, deposited.shares));
+        }
+    }
+    None
+}
+
+fn extract_vault_withdraw_amounts(receipt: &TransactionReceipt) -> Option<(u64, u64)> {
+    for event in &receipt.events {
+        let EventType::Call(action_name) = &event.event_type else {
+            continue;
+        };
+        if action_name.as_str() != "vault_withdrawn" {
+            continue;
+        }
+        let EventData::Bytes(data) = &event.data else {
+            continue;
+        };
+        if let Ok(withdrawn) = bincode::deserialize::<VaultWithdrawnEvent>(data) {
+            return Some((withdrawn.amount, withdrawn.shares));
+        }
+    }
+    None
 }
 
 pub fn extract_order_created_from_receipt(

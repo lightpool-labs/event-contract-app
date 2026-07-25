@@ -157,6 +157,8 @@ pub struct Vault {
     pub share_token: String,
     pub equity: String,
     #[serde(default)]
+    pub user_deposit: String,
+    #[serde(default)]
     pub portfolio: Vec<VaultAsset>,
     pub allow_deposit: bool,
     pub is_closed: bool,
@@ -172,6 +174,8 @@ pub struct QueryVaultsParams {
     pub manager: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vault_addresses: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,4 +184,22 @@ pub struct VaultsPage {
     pub total: usize,
     pub limit: u32,
     pub offset: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultDepositRequest {
+    pub amount: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultWithdrawRequest {
+    pub shares: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultDepositWithdrawResponse {
+    pub vault_address: String,
+    pub amount: String,
+    pub shares: String,
+    pub tx_digest: String,
 }

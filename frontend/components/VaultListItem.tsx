@@ -1,14 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { MarketIcon } from "@/components/MarketIcon";
-import type { Vault, VaultAsset } from "@/lib/types";
+import { api } from "@/lib/api";
+import { requestPortfolioRefresh } from "@/lib/portfolio";
+import type {
+  Vault,
+  VaultAsset,
+  VaultDepositWithdrawResponse,
+} from "@/lib/types";
 
 type VaultListItemProps = {
   vault: Vault;
 };
 
 type VaultTab = "balance" | "position";
+type VaultAction = "deposit" | "withdraw";
+
+const QUICK_AMOUNTS = ["1", "10", "100", "1000"];
 
 function vaultStatus(vault: Vault): { label: string; className: string } {
   if (vault.is_closed) {
@@ -33,8 +43,162 @@ function isCashAsset(asset: VaultAsset): boolean {
   return asset.market.includes("(Cash)");
 }
 
+function VaultActionDialog({
+  vault,
+  action,
+  onClose,
+}: {
+  vault: Vault;
+  action: VaultAction;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [amount, setAmount] = useState("10");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<VaultDepositWithdrawResponse | null>(
+    null,
+  );
+
+  const isDeposit = action === "deposit";
+  const actionLabel = isDeposit ? "Deposit" : "Withdraw";
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const response = isDeposit
+        ? await api.depositVault(vault.vault_address, { amount })
+        : await api.withdrawVault(vault.vault_address, { shares: amount });
+      setResult(response);
+      requestPortfolioRefresh();
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `${actionLabel} failed`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`vault-${vault.id}-dialog-title`}
+        className="w-full max-w-md rounded-2xl border border-sky-100 bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3
+              id={`vault-${vault.id}-dialog-title`}
+              className="text-lg font-semibold text-slate-900"
+            >
+              {actionLabel}
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">{vault.name}</p>
+            <p className="mt-1 break-all font-mono text-xs text-slate-400">
+              {vault.vault_address}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+          >
+            Close
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="mt-5 space-y-4">
+          <div>
+            <label
+              htmlFor={`vault-${vault.id}-${action}`}
+              className="mb-1 block text-sm font-medium text-slate-700"
+            >
+              {isDeposit ? "Amount (quote token)" : "Shares"}
+            </label>
+            <input
+              id={`vault-${vault.id}-${action}`}
+              type="number"
+              min="0"
+              step="0.000001"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              required
+              autoFocus
+            />
+            <div className="mt-2 flex flex-wrap gap-2">
+              {QUICK_AMOUNTS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setAmount(value)}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 hover:border-sky-300 hover:text-sky-700"
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className={[
+              "w-full rounded-xl border px-4 py-2.5 text-sm font-medium transition disabled:opacity-50",
+              isDeposit
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100",
+            ].join(" ")}
+          >
+            {loading ? `${actionLabel}ing...` : actionLabel}
+          </button>
+        </form>
+
+        {error && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {result && (
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            <p className="font-medium">
+              {actionLabel}ed {result.amount} quote / {result.shares} shares
+            </p>
+            <p className="mt-1 break-all font-mono text-xs">
+              Tx: {result.tx_digest}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function VaultListItem({ vault }: VaultListItemProps) {
   const [tab, setTab] = useState<VaultTab>("balance");
+  const [action, setAction] = useState<VaultAction | null>(null);
+
   const canDeposit = !vault.is_closed && vault.allow_deposit;
   const canWithdraw = !vault.is_closed;
   const status = vaultStatus(vault);
@@ -66,6 +230,7 @@ export function VaultListItem({ vault }: VaultListItemProps) {
           <button
             type="button"
             disabled={!canDeposit}
+            onClick={() => setAction("deposit")}
             className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-center transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span className="block text-xs font-medium text-emerald-700">
@@ -75,6 +240,7 @@ export function VaultListItem({ vault }: VaultListItemProps) {
           <button
             type="button"
             disabled={!canWithdraw}
+            onClick={() => setAction("withdraw")}
             className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-center transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span className="block text-xs font-medium text-rose-700">
@@ -83,6 +249,14 @@ export function VaultListItem({ vault }: VaultListItemProps) {
           </button>
         </div>
       </div>
+
+      {action && (
+        <VaultActionDialog
+          vault={vault}
+          action={action}
+          onClose={() => setAction(null)}
+        />
+      )}
 
       <div className="mt-5 min-w-0 overflow-x-auto border-t border-b border-slate-100 pt-4 pb-2">
         <table className="w-auto table-fixed text-left text-xs text-slate-700">
@@ -109,7 +283,7 @@ export function VaultListItem({ vault }: VaultListItemProps) {
               <td className="px-4 py-0">
                 <p className="text-slate-500">Deposit</p>
                 <p className="mt-1 whitespace-nowrap font-mono text-sm font-medium text-slate-900">
-                  —
+                  {vault.user_deposit || "0.00"}
                 </p>
               </td>
               <td className="px-4 py-0">

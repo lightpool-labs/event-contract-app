@@ -58,6 +58,7 @@ export type Vault = {
   quote_token: string;
   share_token: string;
   equity: string;
+  user_deposit?: string;
   portfolio?: VaultAsset[];
   allow_deposit: boolean;
   is_closed: boolean;
@@ -139,6 +140,21 @@ export type MintBurnRequest = {
 export type MintBurnResponse = {
   slug: string;
   amount: string;
+  tx_digest: string;
+};
+
+export type VaultDepositRequest = {
+  amount: string;
+};
+
+export type VaultWithdrawRequest = {
+  shares: string;
+};
+
+export type VaultDepositWithdrawResponse = {
+  vault_address: string;
+  amount: string;
+  shares: string;
   tx_digest: string;
 };
 

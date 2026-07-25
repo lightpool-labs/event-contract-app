@@ -209,6 +209,22 @@ impl ClobIndexClient {
             .await
     }
 
+    pub async fn get_vault_by_address_for_account(
+        &self,
+        address: &str,
+        account: &str,
+    ) -> AppResult<Vault> {
+        #[derive(Serialize)]
+        struct AccountQuery<'a> {
+            account: &'a str,
+        }
+        self.get_json_with_query(
+            &format!("/api/vaults/address/{address}"),
+            &AccountQuery { account },
+        )
+        .await
+    }
+
     pub async fn position_token_specs(&self) -> AppResult<Vec<BalanceTokenSpec>> {
         self.get_json("/api/markets/index/position-token-specs")
             .await

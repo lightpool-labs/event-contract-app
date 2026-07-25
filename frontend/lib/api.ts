@@ -12,7 +12,10 @@ import type {
   Order,
   PlaceOrderRequest,
   Vault,
+  VaultDepositRequest,
+  VaultDepositWithdrawResponse,
   VaultsPage,
+  VaultWithdrawRequest,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3001/api";
@@ -169,6 +172,22 @@ export const api = {
     return page.vaults;
   },
   getVault: (address: string) => request<Vault>(`/vaults/${address}`),
+  depositVault: (address: string, body: VaultDepositRequest) =>
+    request<VaultDepositWithdrawResponse>(
+      `/vaults/${encodeURIComponent(address)}/deposit`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+  withdrawVault: (address: string, body: VaultWithdrawRequest) =>
+    request<VaultDepositWithdrawResponse>(
+      `/vaults/${encodeURIComponent(address)}/withdraw`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
   listOrders: () => request<Order[]>("/orders"),
   placeOrder: (body: PlaceOrderRequest) =>
     request<Order>("/orders", { method: "POST", body: JSON.stringify(body) }),
