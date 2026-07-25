@@ -42,6 +42,13 @@ export type MarketsPage = {
   offset: number;
 };
 
+export type VaultAsset = {
+  market: string;
+  amount: string;
+  last_price?: string | null;
+  quote_value?: string | null;
+};
+
 export type Vault = {
   id: string;
   vault_address: string;
@@ -50,6 +57,7 @@ export type Vault = {
   quote_token: string;
   share_token: string;
   equity: string;
+  portfolio?: VaultAsset[];
   allow_deposit: boolean;
   is_closed: boolean;
 };
