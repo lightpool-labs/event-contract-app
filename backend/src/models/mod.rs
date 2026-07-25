@@ -137,6 +137,16 @@ pub struct MarketsPage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultAsset {
+    pub market: String,
+    pub amount: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_price: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quote_value: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Vault {
     pub id: Uuid,
     pub vault_address: String,
@@ -145,6 +155,8 @@ pub struct Vault {
     pub quote_token: String,
     pub share_token: String,
     pub equity: String,
+    #[serde(default)]
+    pub portfolio: Vec<VaultAsset>,
     pub allow_deposit: bool,
     pub is_closed: bool,
 }
