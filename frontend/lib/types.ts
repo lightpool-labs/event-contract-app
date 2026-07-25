@@ -51,6 +51,7 @@ export type VaultAsset = {
 
 export type Vault = {
   id: string;
+  name: string;
   vault_address: string;
   vault_account: string;
   manager: string;

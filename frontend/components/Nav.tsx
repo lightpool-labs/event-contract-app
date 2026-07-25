@@ -36,7 +36,7 @@ export function Nav({ portfolio, cash, userAddress }: NavProps) {
           <Link
             href="/vaults"
             className={
-              pathname === "/vaults" || pathname.startsWith("/vaults/")
+              pathname === "/vaults"
                 ? "font-medium text-sky-700"
                 : "text-slate-600 hover:text-sky-700"
             }
