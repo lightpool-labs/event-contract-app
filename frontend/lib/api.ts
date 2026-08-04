@@ -53,6 +53,21 @@ export type BridgeConfig = {
 export type PreparedLpTx = {
   digest_hex: string;
   unsigned_tx_hex: string;
+  eip712: {
+    domain: {
+      name: string;
+      version: string;
+      chainId: number;
+      verifyingContract: string;
+    };
+    types: {
+      LightPoolTx: Array<{ name: string; type: string }>;
+    };
+    primaryType: string;
+    message: {
+      digest: string;
+    };
+  };
 };
 
 export type AgentStatus = {

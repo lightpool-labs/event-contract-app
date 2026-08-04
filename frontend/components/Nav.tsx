@@ -41,16 +41,6 @@ export function Nav({ portfolio, cash }: NavProps) {
             Vaults
           </Link>
           <Link
-            href="/cash"
-            className={
-              pathname === "/cash"
-                ? "font-medium text-sky-700"
-                : "text-slate-600 hover:text-sky-700"
-            }
-          >
-            Cash
-          </Link>
-          <Link
             href="/dashboard"
             className={
               pathname === "/dashboard" || pathname.startsWith("/dashboard?")
@@ -63,7 +53,16 @@ export function Nav({ portfolio, cash }: NavProps) {
           <span className="text-slate-600">
             Portfolio {portfolioLabel(portfolio)}
           </span>
-          <span className="text-slate-600">Cash {cashLabel(cash)}</span>
+          <Link
+            href="/cash"
+            className={
+              pathname === "/cash"
+                ? "font-medium text-sky-700"
+                : "text-slate-600 hover:text-sky-700"
+            }
+          >
+            Cash {cashLabel(cash)}
+          </Link>
           <ConnectWallet />
         </nav>
       </div>

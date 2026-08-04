@@ -7,7 +7,7 @@ use axum::{extract::State, routing::{get, post}, Json, Router};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthUser;
-use crate::chain::decode_unsigned_tx;
+use crate::chain::{decode_unsigned_tx, Eip712TypedDataJson};
 use crate::clob::BalanceTokenSpec;
 use crate::crypto_util::{parse_address, signature_from_rs_hex};
 use crate::error::{AppError, AppResult};
@@ -18,6 +18,7 @@ use crate::state::AppState;
 pub struct PreparedTxResponse {
     pub digest_hex: String,
     pub unsigned_tx_hex: String,
+    pub eip712: Eip712TypedDataJson,
 }
 
 #[derive(Deserialize)]
@@ -123,6 +124,7 @@ async fn prepare_set_agent(
     Ok(Json(PreparedTxResponse {
         digest_hex: prepared.digest_hex,
         unsigned_tx_hex: prepared.unsigned_tx_hex,
+        eip712: prepared.eip712,
     }))
 }
 

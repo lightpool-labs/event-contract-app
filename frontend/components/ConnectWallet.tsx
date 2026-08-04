@@ -1,11 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAccount, useConnect, useDisconnect, useSignMessage } from "wagmi";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  useAccount,
+  useConnect,
+  useSignMessage,
+  useSignTypedData,
+} from "wagmi";
 import { api } from "@/lib/api";
 import { formatAddress } from "@/lib/address";
 import {
-  clearSession,
   getSessionAddress,
   getSessionToken,
   notifySessionChanged,
@@ -13,17 +18,20 @@ import {
   setSession,
 } from "@/lib/session";
 import {
-  clearLpPrivateKey,
-  resolveLpPrivateKey,
-  signLpDigestForAddress,
+  compactRsFromEthereumSignature,
+  lightPoolTypedDataFromPrepared,
 } from "@/lib/lpSign";
 import { requestPortfolioRefresh } from "@/lib/portfolio";
+
+export const OPEN_CASH_DEPOSIT_EVENT = "open-cash-deposit";
 
 export function ConnectWallet() {
   const { address, isConnected } = useAccount();
   const { connect, connectors, isPending } = useConnect();
-  const { disconnect } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
+  const { signTypedDataAsync } = useSignTypedData();
+  const router = useRouter();
+  const pathname = usePathname();
   const [sessionAddress, setSessionAddress] = useState<string | null>(null);
   const [agentAuthorized, setAgentAuthorized] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -57,20 +65,14 @@ export function ConnectWallet() {
     void loadAgent();
   }, [sessionAddress]);
 
-  const authorizeAgent = useCallback(async (lpAddress: string) => {
+  const authorizeAgent = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
-      try {
-        resolveLpPrivateKey(lpAddress);
-      } catch {
-        setError(
-          "Missing LightPool signing key. Add NEXT_PUBLIC_LP_PRIVATE_KEY=<hex for this MetaMask address> to frontend/.env.local and restart npm run dev.",
-        );
-        return false;
-      }
       const prepared = await api.prepareSetAgent();
-      const signature = signLpDigestForAddress(prepared.digest_hex, lpAddress);
+      const typed = lightPoolTypedDataFromPrepared(prepared);
+      const ethSig = await signTypedDataAsync(typed);
+      const signature = compactRsFromEthereumSignature(ethSig);
       await api.submitSetAgent(signature, prepared.unsigned_tx_hex);
       setAgentAuthorized(true);
       return true;
@@ -80,7 +82,7 @@ export function ConnectWallet() {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [signTypedDataAsync]);
 
   const login = useCallback(async () => {
     if (!address) {
@@ -99,7 +101,7 @@ export function ConnectWallet() {
       requestPortfolioRefresh();
       if (!verified.agent_authorized) {
         agentAttemptedFor.current = null;
-        await authorizeAgent(verified.address);
+        await authorizeAgent();
       }
     } catch (e) {
       loginAttemptedFor.current = null;
@@ -136,21 +138,34 @@ export function ConnectWallet() {
       return;
     }
     agentAttemptedFor.current = key;
-    void authorizeAgent(sessionAddress).then((ok) => {
+    void authorizeAgent().then((ok) => {
       if (!ok) {
         agentAttemptedFor.current = null;
       }
     });
   }, [loggedIn, sessionAddress, busy, agentAuthorized, authorizeAgent]);
 
-  function onDisconnect() {
-    loginAttemptedFor.current = null;
-    agentAttemptedFor.current = null;
-    clearSession();
-    clearLpPrivateKey();
-    notifySessionChanged();
-    setAgentAuthorized(null);
-    disconnect();
+  function onDeposit() {
+    if (pathname === "/cash") {
+      window.dispatchEvent(new Event(OPEN_CASH_DEPOSIT_EVENT));
+      return;
+    }
+    router.push("/cash?action=deposit");
+  }
+
+  const [copied, setCopied] = useState(false);
+
+  async function onCopyAddress() {
+    if (!address) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore
+    }
   }
 
   if (!isConnected || !address) {
@@ -190,27 +205,28 @@ export function ConnectWallet() {
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-2">
-        <span
-          className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-mono text-xs font-medium text-emerald-700"
-          title={address}
-        >
-          {formatAddress(address)}
-        </span>
         {statusLabel ? (
           <span className="text-xs text-slate-500">{statusLabel}</span>
         ) : (
           <button
             type="button"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
-            onClick={onDisconnect}
+            className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-center transition hover:bg-emerald-100"
+            onClick={onDeposit}
           >
-            Disconnect
+            <span className="block text-xs font-medium text-emerald-700">
+              Deposit
+            </span>
           </button>
         )}
+        <button
+          type="button"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 font-mono text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+          title={copied ? "Copied" : `Click to copy ${address}`}
+          onClick={() => void onCopyAddress()}
+        >
+          {copied ? "Copied" : formatAddress(address)}
+        </button>
       </div>
-      {loggedIn && agentAuthorized && (
-        <span className="text-[11px] text-slate-500">Agent ready</span>
-      )}
       {error && (
         <div className="flex max-w-xs flex-col items-end gap-1">
           <p className="text-right text-[11px] text-red-600">{error}</p>

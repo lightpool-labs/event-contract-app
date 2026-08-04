@@ -6,7 +6,7 @@ use lightpool_sdk::parse_token_contract;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::AuthUser;
-use crate::chain::{decode_unsigned_tx, parse_order_size};
+use crate::chain::{decode_unsigned_tx, parse_order_size, Eip712TypedDataJson};
 use crate::crypto_util::{parse_address, parse_evm_address20, signature_from_rs_hex};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
@@ -49,6 +49,7 @@ pub struct PrepareWithdrawRequest {
 pub struct PreparedTxResponse {
     pub digest_hex: String,
     pub unsigned_tx_hex: String,
+    pub eip712: Eip712TypedDataJson,
 }
 
 async fn prepare_withdraw(
@@ -75,6 +76,7 @@ async fn prepare_withdraw(
     Ok(Json(PreparedTxResponse {
         digest_hex: prepared.digest_hex,
         unsigned_tx_hex: prepared.unsigned_tx_hex,
+        eip712: prepared.eip712,
     }))
 }
 

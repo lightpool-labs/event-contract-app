@@ -8,13 +8,16 @@ use lightpool_sdk::spot_events::{
 use lightpool_sdk::types::SubmitTransactionResponse;
 use lightpool_sdk::{
     extract_event_contract_created_from_events, extract_token_address_from_events, ActionBuilder,
-    Address, BridgeWithdrawParams, BurnEventContractParams, ContractAddress,
+    Address, AuthScheme, BridgeWithdrawParams, BurnEventContractParams, ContractAddress,
     CreateEventContractParams, CreateTokenParams, DepositVaultParams, EventData, EventType,
     CancelOrderParams, MintEventContractParams, OrderSide, PlaceOrderParams, SdkError, SdkResult,
     SetAgentParams, Signer, Signature, TimeInForce, TransactionBuilder, TransactionReceipt,
-    VaultDepositedEvent, VaultWithdrawnEvent, WithdrawVaultParams, TOKEN_SCALE,
+    VaultDepositedEvent, VaultWithdrawnEvent, WithdrawVaultParams, LIGHTPOOL_EIP712_CHAIN_ID,
+    LIGHTPOOL_EIP712_NAME, LIGHTPOOL_EIP712_VERIFYING_CONTRACT, LIGHTPOOL_EIP712_VERSION,
+    TOKEN_SCALE,
 };
 use lightpool_sdk::lightpool_types::{SignedTransaction, Transaction};
+use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -465,7 +468,7 @@ impl ChainClient {
         tx: Transaction,
         signature: Signature,
     ) -> AppResult<SubmitTransactionResponse> {
-        let signed = SignedTransaction::new(tx, signature);
+        let signed = SignedTransaction::new_with_scheme(tx, signature, AuthScheme::Eip712);
         let response = self.submit_transaction(signed).await?;
         if !response.receipt.is_success() {
             return Err(AppError::Internal(format!(
@@ -477,9 +480,47 @@ impl ChainClient {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct Eip712DomainJson {
+    pub name: String,
+    pub version: String,
+    #[serde(rename = "chainId")]
+    pub chain_id: u64,
+    #[serde(rename = "verifyingContract")]
+    pub verifying_contract: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Eip712TypeField {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub type_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Eip712TypesJson {
+    #[serde(rename = "LightPoolTx")]
+    pub lightpool_tx: Vec<Eip712TypeField>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Eip712MessageJson {
+    pub digest: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Eip712TypedDataJson {
+    pub domain: Eip712DomainJson,
+    pub types: Eip712TypesJson,
+    #[serde(rename = "primaryType")]
+    pub primary_type: String,
+    pub message: Eip712MessageJson,
+}
+
 pub struct PreparedUserTx {
     pub digest_hex: String,
     pub unsigned_tx_hex: String,
+    pub eip712: Eip712TypedDataJson,
 }
 
 impl PreparedUserTx {
@@ -489,9 +530,32 @@ impl PreparedUserTx {
         let bytes = bincode::serialize(&tx)
             .map_err(|e| AppError::Internal(format!("serialize tx: {e}")))?;
         Ok(Self {
-            digest_hex,
+            digest_hex: digest_hex.clone(),
             unsigned_tx_hex: format!("0x{}", hex::encode(bytes)),
+            eip712: eip712_typed_data(&digest_hex),
         })
+    }
+}
+
+pub fn eip712_typed_data(digest_hex: &str) -> Eip712TypedDataJson {
+    let verifying = format!("0x{}", hex::encode(LIGHTPOOL_EIP712_VERIFYING_CONTRACT));
+    Eip712TypedDataJson {
+        domain: Eip712DomainJson {
+            name: LIGHTPOOL_EIP712_NAME.to_string(),
+            version: LIGHTPOOL_EIP712_VERSION.to_string(),
+            chain_id: LIGHTPOOL_EIP712_CHAIN_ID,
+            verifying_contract: verifying,
+        },
+        types: Eip712TypesJson {
+            lightpool_tx: vec![Eip712TypeField {
+                name: "digest".into(),
+                type_name: "bytes32".into(),
+            }],
+        },
+        primary_type: "LightPoolTx".into(),
+        message: Eip712MessageJson {
+            digest: digest_hex.to_string(),
+        },
     }
 }
 
