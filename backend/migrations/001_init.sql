@@ -1,10 +1,12 @@
 -- Event contract app schema (MVP)
 
 CREATE TABLE IF NOT EXISTS users (
-    id              UUID PRIMARY KEY,
-    lp_address      TEXT NOT NULL UNIQUE,
-    agent_address   TEXT NOT NULL,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                      UUID PRIMARY KEY,
+    lp_address              TEXT NOT NULL UNIQUE,
+    agent_address           TEXT NOT NULL,
+    agent_secret_encrypted  TEXT NOT NULL DEFAULT '',
+    agent_authorized        BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS markets (

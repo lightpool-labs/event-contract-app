@@ -12,9 +12,11 @@ use lightpool_sdk::{
 use serde::Deserialize;
 use uuid::Uuid;
 
+use crate::auth::AuthUser;
 use crate::chain::{
     parse_order_size, parse_price_pieces, PlaceOrderPlacementContext, resolve_placed_order_from_receipt,
 };
+use crate::crypto_util::parse_address;
 use crate::error::{AppError, AppResult};
 use crate::models::Order;
 use crate::state::AppState;
@@ -37,6 +39,7 @@ pub struct PlaceOrderRequest {
 
 async fn place_order(
     State(state): State<AppState>,
+    user: AuthUser,
     Json(body): Json<PlaceOrderRequest>,
 ) -> AppResult<Json<Order>> {
     if body.outcome != "yes" && body.outcome != "no" {
@@ -100,13 +103,14 @@ async fn place_order(
         )
     };
 
-    let signer = state
-        .signer
-        .dev_signer()
-        .await
-        .map_err(|e| AppError::Internal(format!("signer unavailable: {e}")))?;
-
-    let user = state.signer.user_address().await;
+    let record = state.users.get_or_create(&user.lp_address).await?;
+    if !record.agent_authorized {
+        return Err(AppError::BadRequest(
+            "agent not authorized; call set_agent first".into(),
+        ));
+    }
+    let agent_signer = state.users.agent_signer(&record)?;
+    let account = parse_address(&record.lp_address)?;
 
     let params = PlaceOrderParams {
         side,
@@ -118,11 +122,11 @@ async fn place_order(
 
     let response = state
         .chain
-        .place_order(&signer, spot_market, params)
+        .place_order(&agent_signer, account, spot_market, params)
         .await?;
 
     let placement_ctx = PlaceOrderPlacementContext {
-        user,
+        user: account,
         spot_market,
         side,
         amount,
@@ -150,13 +154,19 @@ async fn place_order(
 
 async fn cancel_order(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Json<Order>> {
-    let user = state.signer.user_address().await.to_string();
+    let record = state.users.get_or_create(&user.lp_address).await?;
+    if !record.agent_authorized {
+        return Err(AppError::BadRequest(
+            "agent not authorized; call set_agent first".into(),
+        ));
+    }
 
     let (mut order, chain_order_id, spot_market) = state
         .clob
-        .order_cancel_context(id, &user)
+        .order_cancel_context(id, &record.lp_address)
         .await?;
 
     let chain_order_id_u64: u64 = chain_order_id
@@ -166,25 +176,27 @@ async fn cancel_order(
     let spot_market = parse_token_contract(&spot_market)
         .map_err(|e| AppError::BadRequest(format!("invalid spot market: {e}")))?;
 
-    let signer = state
-        .signer
-        .dev_signer()
-        .await
-        .map_err(|e| AppError::Internal(format!("signer unavailable: {e}")))?;
+    let agent_signer = state.users.agent_signer(&record)?;
+    let account = parse_address(&record.lp_address)?;
 
     state
         .chain
-        .cancel_order(&signer, spot_market, chain_order_id_u64)
+        .cancel_order(&agent_signer, account, spot_market, chain_order_id_u64)
         .await?;
 
-    state.clob.mark_order_cancelled(id, &user).await?;
+    state
+        .clob
+        .mark_order_cancelled(id, &record.lp_address)
+        .await?;
 
     order.status = "cancelled".into();
     Ok(Json(order))
 }
 
-async fn list_orders(State(state): State<AppState>) -> AppResult<Json<Vec<Order>>> {
-    let user = state.signer.user_address().await.to_string();
-    let orders = state.clob.list_orders(&user).await?;
+async fn list_orders(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> AppResult<Json<Vec<Order>>> {
+    let orders = state.clob.list_orders(&user.lp_address).await?;
     Ok(Json(orders))
 }

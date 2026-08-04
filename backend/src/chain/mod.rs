@@ -8,12 +8,13 @@ use lightpool_sdk::spot_events::{
 use lightpool_sdk::types::SubmitTransactionResponse;
 use lightpool_sdk::{
     extract_event_contract_created_from_events, extract_token_address_from_events, ActionBuilder,
-    Address, BurnEventContractParams, ContractAddress, CreateEventContractParams, CreateTokenParams,
-    DepositVaultParams, EventData, EventType, CancelOrderParams, MintEventContractParams,
-    OrderSide, PlaceOrderParams, SdkError, SdkResult, Signer,
-    TimeInForce, TransactionBuilder, TransactionReceipt, VaultDepositedEvent, VaultWithdrawnEvent,
-    WithdrawVaultParams, TOKEN_SCALE,
+    Address, BridgeWithdrawParams, BurnEventContractParams, ContractAddress,
+    CreateEventContractParams, CreateTokenParams, DepositVaultParams, EventData, EventType,
+    CancelOrderParams, MintEventContractParams, OrderSide, PlaceOrderParams, SdkError, SdkResult,
+    SetAgentParams, Signer, Signature, TimeInForce, TransactionBuilder, TransactionReceipt,
+    VaultDepositedEvent, VaultWithdrawnEvent, WithdrawVaultParams, TOKEN_SCALE,
 };
+use lightpool_sdk::lightpool_types::{SignedTransaction, Transaction};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -353,6 +354,7 @@ impl ChainClient {
     pub async fn place_order(
         &self,
         signer: &Signer,
+        account: Address,
         spot_market: ContractAddress,
         params: PlaceOrderParams,
     ) -> AppResult<SubmitTransactionResponse> {
@@ -361,10 +363,14 @@ impl ChainClient {
         let action = ActionBuilder::place_order(spot_market, params)
             .map_err(|e| AppError::Internal(format!("build place_order action: {e}")))?;
 
-        let tx = TransactionBuilder::new()
+        let mut builder = TransactionBuilder::new()
             .sender(sender)
             .expiration(u64::MAX)
-            .add_action(action)
+            .add_action(action);
+        if account != sender {
+            builder = builder.account(account);
+        }
+        let tx = builder
             .build_and_sign_only(signer)
             .map_err(|e| AppError::Internal(format!("sign place_order tx: {e}")))?;
 
@@ -383,6 +389,7 @@ impl ChainClient {
     pub async fn cancel_order(
         &self,
         signer: &Signer,
+        account: Address,
         spot_market: ContractAddress,
         order_id: u64,
     ) -> AppResult<SubmitTransactionResponse> {
@@ -392,10 +399,14 @@ impl ChainClient {
         let action = ActionBuilder::cancel_order(spot_market, params)
             .map_err(|e| AppError::Internal(format!("build cancel_order action: {e}")))?;
 
-        let tx = TransactionBuilder::new()
+        let mut builder = TransactionBuilder::new()
             .sender(sender)
             .expiration(u64::MAX)
-            .add_action(action)
+            .add_action(action);
+        if account != sender {
+            builder = builder.account(account);
+        }
+        let tx = builder
             .build_and_sign_only(signer)
             .map_err(|e| AppError::Internal(format!("sign cancel_order tx: {e}")))?;
 
@@ -410,6 +421,90 @@ impl ChainClient {
 
         Ok(response)
     }
+
+    pub fn prepare_set_agent(
+        &self,
+        user: Address,
+        agent: Address,
+    ) -> AppResult<PreparedUserTx> {
+        let action = ActionBuilder::set_agent(SetAgentParams { agent })
+            .map_err(|e| AppError::Internal(format!("build set_agent action: {e}")))?;
+        let tx = TransactionBuilder::new()
+            .sender(user)
+            .expiration(u64::MAX)
+            .add_action(action)
+            .build()
+            .map_err(|e| AppError::Internal(format!("build set_agent tx: {e}")))?;
+        PreparedUserTx::from_tx(tx)
+    }
+
+    pub fn prepare_bridge_withdraw(
+        &self,
+        user: Address,
+        token: ContractAddress,
+        amount: u64,
+        evm_recipient: [u8; 20],
+    ) -> AppResult<PreparedUserTx> {
+        let action = ActionBuilder::bridge_withdraw(BridgeWithdrawParams {
+            token,
+            amount,
+            evm_recipient,
+        })
+        .map_err(|e| AppError::Internal(format!("build bridge_withdraw action: {e}")))?;
+        let tx = TransactionBuilder::new()
+            .sender(user)
+            .expiration(u64::MAX)
+            .add_action(action)
+            .build()
+            .map_err(|e| AppError::Internal(format!("build bridge_withdraw tx: {e}")))?;
+        PreparedUserTx::from_tx(tx)
+    }
+
+    pub async fn submit_user_signed(
+        &self,
+        tx: Transaction,
+        signature: Signature,
+    ) -> AppResult<SubmitTransactionResponse> {
+        let signed = SignedTransaction::new(tx, signature);
+        let response = self.submit_transaction(signed).await?;
+        if !response.receipt.is_success() {
+            return Err(AppError::Internal(format!(
+                "user-signed tx failed: {:?}",
+                response.receipt.status
+            )));
+        }
+        Ok(response)
+    }
+}
+
+pub struct PreparedUserTx {
+    pub digest_hex: String,
+    pub unsigned_tx_hex: String,
+}
+
+impl PreparedUserTx {
+    fn from_tx(tx: Transaction) -> AppResult<Self> {
+        let digest = tx.digest();
+        let digest_hex = format!("0x{}", hex::encode(digest.as_bytes()));
+        let bytes = bincode::serialize(&tx)
+            .map_err(|e| AppError::Internal(format!("serialize tx: {e}")))?;
+        Ok(Self {
+            digest_hex,
+            unsigned_tx_hex: format!("0x{}", hex::encode(bytes)),
+        })
+    }
+}
+
+pub fn decode_unsigned_tx(hex_raw: &str) -> AppResult<Transaction> {
+    let trimmed = hex_raw.trim();
+    let body = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+        .unwrap_or(trimmed);
+    let bytes =
+        hex::decode(body).map_err(|e| AppError::BadRequest(format!("invalid tx hex: {e}")))?;
+    bincode::deserialize(&bytes)
+        .map_err(|e| AppError::BadRequest(format!("invalid unsigned tx: {e}")))
 }
 
 pub fn format_token_amount(raw: u64) -> String {

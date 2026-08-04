@@ -12,6 +12,12 @@ pub struct Config {
     pub dev_secret_key: Option<String>,
     pub cash_token_address: Option<String>,
     pub cash_token_symbol: String,
+    pub jwt_secret: String,
+    pub agent_encryption_key: String,
+    pub eth_usdt: Option<String>,
+    pub bridge: Option<String>,
+    pub evm_rpc_url: String,
+    pub evm_chain_id: u64,
 }
 
 impl Config {
@@ -35,6 +41,24 @@ impl Config {
                 .ok()
                 .filter(|v| !v.trim().is_empty())
                 .unwrap_or_else(|| "USDT".into()),
+            jwt_secret: env::var("JWT_SECRET")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| "dev-jwt-secret-change-me".into()),
+            agent_encryption_key: env::var("AGENT_ENCRYPTION_KEY")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| "dev-agent-encryption-key".into()),
+            eth_usdt: env::var("ETH_USDT").ok().filter(|v| !v.trim().is_empty()),
+            bridge: env::var("BRIDGE").ok().filter(|v| !v.trim().is_empty()),
+            evm_rpc_url: env::var("EVM_RPC_URL")
+                .ok()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| "http://127.0.0.1:8545".into()),
+            evm_chain_id: env::var("EVM_CHAIN_ID")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1337),
         }
     }
 }

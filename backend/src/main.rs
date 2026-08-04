@@ -1,15 +1,18 @@
 // Copyright (c) LightPool Labs
 // Author: xiaoyu1998
 
+mod auth;
 mod cash_token;
 mod chain;
 mod clob;
 mod config;
+mod crypto_util;
 mod error;
 mod models;
 mod routes;
 mod slug;
 mod state;
+mod users;
 
 use std::net::SocketAddr;
 
@@ -33,7 +36,7 @@ async fn main() {
         .init();
 
     let config = Config::from_env();
-    let state = AppState::new(config.clone());
+    let state = AppState::new(config.clone()).await;
 
     let app = Router::new()
         .nest("/api", routes::api_router())

@@ -3,6 +3,8 @@
 
 pub mod account;
 pub mod admin;
+pub mod auth;
+pub mod bridge;
 pub mod markets;
 pub mod health;
 pub mod orders;
@@ -20,4 +22,6 @@ pub fn api_router() -> Router<AppState> {
         .nest("/orders", orders::router())
         .nest("/account", account::router())
         .nest("/admin", admin::router())
+        .nest("/auth", auth::router())
+        .nest("/bridge", bridge::router())
 }
