@@ -7,18 +7,14 @@ import {
   loadPortfolioSummary,
   PORTFOLIO_REFRESH_EVENT,
 } from "@/lib/portfolio";
+import { SESSION_CHANGED_EVENT } from "@/lib/session";
 
 type NavBarProps = {
   initialPortfolio: number;
   initialCash: number;
-  userAddress: string | null;
 };
 
-export function NavBar({
-  initialPortfolio,
-  initialCash,
-  userAddress,
-}: NavBarProps) {
+export function NavBar({ initialPortfolio, initialCash }: NavBarProps) {
   const pathname = usePathname();
   const [portfolio, setPortfolio] = useState(initialPortfolio);
   const [cash, setCash] = useState(initialCash);
@@ -48,13 +44,15 @@ export function NavBar({
     }
 
     window.addEventListener(PORTFOLIO_REFRESH_EVENT, onRefresh);
+    window.addEventListener(SESSION_CHANGED_EVENT, onRefresh);
     void refreshBalances();
 
     return () => {
       cancelled = true;
       window.removeEventListener(PORTFOLIO_REFRESH_EVENT, onRefresh);
+      window.removeEventListener(SESSION_CHANGED_EVENT, onRefresh);
     };
   }, [pathname]);
 
-  return <Nav portfolio={portfolio} cash={cash} userAddress={userAddress} />;
+  return <Nav portfolio={portfolio} cash={cash} />;
 }

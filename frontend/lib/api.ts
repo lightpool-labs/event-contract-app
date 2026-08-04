@@ -17,14 +17,17 @@ import type {
   VaultsPage,
   VaultWithdrawRequest,
 } from "./types";
+import { getSessionToken } from "./session";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3001/api";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = typeof window !== "undefined" ? getSessionToken() : null;
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
     cache: "no-store",
@@ -38,9 +41,66 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export type BridgeConfig = {
+  eth_usdt: string | null;
+  bridge: string | null;
+  rpc: string;
+  lp_token: string | null;
+  chain_id: number;
+  cash_token_symbol: string;
+};
+
+export type PreparedLpTx = {
+  digest_hex: string;
+  unsigned_tx_hex: string;
+};
+
+export type AgentStatus = {
+  agent_address: string;
+  authorized: boolean;
+  lp_address: string;
+};
+
 export const api = {
   health: () => request<{ status: string }>("/health"),
   ready: () => request<{ status: string; node: boolean }>("/ready"),
+  authNonce: (address: string) =>
+    request<{ address: string; nonce: string; message: string }>("/auth/nonce", {
+      method: "POST",
+      body: JSON.stringify({ address }),
+    }),
+  authVerify: (address: string, signature: string) =>
+    request<{
+      token: string;
+      address: string;
+      agent_address: string;
+      agent_authorized: boolean;
+    }>("/auth/verify", {
+      method: "POST",
+      body: JSON.stringify({ address, signature }),
+    }),
+  getAgent: () => request<AgentStatus>("/account/agent"),
+  prepareSetAgent: () =>
+    request<PreparedLpTx>("/account/agent/prepare-set-agent", {
+      method: "POST",
+      body: "{}",
+    }),
+  submitSetAgent: (signature: string, unsigned_tx_hex: string) =>
+    request<{ digest: string; status: string }>("/account/agent/submit", {
+      method: "POST",
+      body: JSON.stringify({ signature, unsigned_tx_hex }),
+    }),
+  getBridgeConfig: () => request<BridgeConfig>("/bridge/config"),
+  prepareBridgeWithdraw: (amount: string, evm_recipient: string) =>
+    request<PreparedLpTx>("/bridge/withdraw/prepare", {
+      method: "POST",
+      body: JSON.stringify({ amount, evm_recipient }),
+    }),
+  submitBridgeWithdraw: (signature: string, unsigned_tx_hex: string) =>
+    request<{ digest: string; status: string }>("/bridge/withdraw/submit", {
+      method: "POST",
+      body: JSON.stringify({ signature, unsigned_tx_hex }),
+    }),
   listMarkets: async (params?: {
     limit?: number;
     offset?: number;
