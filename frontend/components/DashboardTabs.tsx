@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { findPositionMeta, getPositionBalances } from "@/lib/balances";
+import { requestPortfolioRefresh } from "@/lib/portfolio";
 import type { BalanceEntry, Market, Order } from "@/lib/types";
 
 type Tab = "position" | "open" | "history";
@@ -16,7 +16,7 @@ const tabs: { id: Tab; label: string }[] = [
 ];
 
 function tabHref(tab: Tab) {
-  return tab === "position" ? "/dashboard" : `/dashboard?tab=${tab}`;
+  return tab === "position" ? "/portfolio" : `/portfolio?tab=${tab}`;
 }
 
 function isActiveTab(current: Tab, tab: Tab) {
@@ -174,7 +174,6 @@ function OrdersTable({
   allowCancel?: boolean;
   cancelStatuses?: string[];
 }) {
-  const router = useRouter();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
@@ -183,7 +182,7 @@ function OrdersTable({
     setCancelError(null);
     try {
       await api.cancelOrder(orderId);
-      router.refresh();
+      requestPortfolioRefresh();
     } catch (err) {
       setCancelError(err instanceof Error ? err.message : "Cancel failed");
     } finally {

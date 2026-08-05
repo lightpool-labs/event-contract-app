@@ -27,7 +27,7 @@ export const OPEN_CASH_DEPOSIT_EVENT = "open-cash-deposit";
 
 export function ConnectWallet() {
   const { address, isConnected } = useAccount();
-  const { connect, connectors, isPending } = useConnect();
+  const { connectAsync, connectors, isPending } = useConnect();
   const { signMessageAsync } = useSignMessage();
   const { signTypedDataAsync } = useSignTypedData();
   const router = useRouter();
@@ -37,7 +37,7 @@ export function ConnectWallet() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loginAttemptedFor = useRef<string | null>(null);
-  const agentAttemptedFor = useRef<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const refreshSession = useCallback(() => {
     setSessionAddress(getSessionAddress());
@@ -49,63 +49,61 @@ export function ConnectWallet() {
     return () => window.removeEventListener(SESSION_CHANGED_EVENT, refreshSession);
   }, [refreshSession]);
 
-  useEffect(() => {
-    async function loadAgent() {
-      if (!getSessionToken()) {
-        setAgentAuthorized(null);
-        return;
-      }
-      try {
-        const agent = await api.getAgent();
-        setAgentAuthorized(agent.authorized);
-      } catch {
-        setAgentAuthorized(null);
-      }
+  const refreshAgent = useCallback(async () => {
+    if (!getSessionToken()) {
+      setAgentAuthorized(null);
+      return null;
     }
-    void loadAgent();
-  }, [sessionAddress]);
+    try {
+      const agent = await api.getAgent();
+      setAgentAuthorized(agent.authorized);
+      return agent.authorized;
+    } catch {
+      setAgentAuthorized(null);
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshAgent();
+  }, [sessionAddress, refreshAgent]);
 
   const authorizeAgent = useCallback(async () => {
-    setBusy(true);
     setError(null);
-    try {
-      const prepared = await api.prepareSetAgent();
-      const typed = lightPoolTypedDataFromPrepared(prepared);
-      const ethSig = await signTypedDataAsync(typed);
-      const signature = compactRsFromEthereumSignature(ethSig);
-      await api.submitSetAgent(signature, prepared.unsigned_tx_hex);
-      setAgentAuthorized(true);
-      return true;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "set_agent failed");
-      return false;
-    } finally {
-      setBusy(false);
-    }
+    const prepared = await api.prepareSetAgent();
+    const typed = lightPoolTypedDataFromPrepared(prepared);
+    const ethSig = await signTypedDataAsync(typed);
+    const signature = compactRsFromEthereumSignature(ethSig);
+    await api.submitSetAgent(signature, prepared.unsigned_tx_hex);
+    setAgentAuthorized(true);
+    return true;
   }, [signTypedDataAsync]);
 
-  const login = useCallback(async () => {
-    if (!address) {
-      return;
+  const login = useCallback(async (explicitAddress?: string) => {
+    const account = (explicitAddress || address || "").trim();
+    if (!account) {
+      return false;
     }
     setBusy(true);
     setError(null);
     try {
-      const { message } = await api.authNonce(address);
+      const { message } = await api.authNonce(account);
       const signature = await signMessageAsync({ message });
-      const verified = await api.authVerify(address, signature);
+      const verified = await api.authVerify(account, signature);
       setSession(verified.token, verified.address);
       setSessionAddress(verified.address);
       notifySessionChanged();
       setAgentAuthorized(verified.agent_authorized);
       requestPortfolioRefresh();
+
       if (!verified.agent_authorized) {
-        agentAttemptedFor.current = null;
         await authorizeAgent();
       }
+      return true;
     } catch (e) {
       loginAttemptedFor.current = null;
       setError(e instanceof Error ? e.message : "Login failed");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -126,24 +124,45 @@ export function ConnectWallet() {
       return;
     }
     loginAttemptedFor.current = key;
-    void login();
+    void login(address);
   }, [isConnected, address, busy, loggedIn, login]);
 
-  useEffect(() => {
-    if (!loggedIn || !sessionAddress || busy || agentAuthorized !== false) {
-      return;
-    }
-    const key = sessionAddress.toLowerCase();
-    if (agentAttemptedFor.current === key) {
-      return;
-    }
-    agentAttemptedFor.current = key;
-    void authorizeAgent().then((ok) => {
-      if (!ok) {
-        agentAttemptedFor.current = null;
+  async function onConnectClick() {
+    setError(null);
+    try {
+      const connector = connectors[0];
+      if (!connector) {
+        setError("No wallet connector found");
+        return;
       }
-    });
-  }, [loggedIn, sessionAddress, busy, agentAuthorized, authorizeAgent]);
+      let account = address;
+      if (!isConnected) {
+        const connected = await connectAsync({ connector });
+        account = connected.accounts[0];
+      }
+      if (!account) {
+        setError("No account from MetaMask");
+        return;
+      }
+      loginAttemptedFor.current = null;
+      await login(account);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Connect failed");
+    }
+  }
+
+  async function onAuthorizeAgentClick() {
+    setBusy(true);
+    setError(null);
+    try {
+      await authorizeAgent();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "set_agent failed");
+      setAgentAuthorized(false);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function onDeposit() {
     if (pathname === "/cash") {
@@ -152,8 +171,6 @@ export function ConnectWallet() {
     }
     router.push("/cash?action=deposit");
   }
-
-  const [copied, setCopied] = useState(false);
 
   async function onCopyAddress() {
     if (!address) {
@@ -170,36 +187,37 @@ export function ConnectWallet() {
 
   if (!isConnected || !address) {
     return (
-      <button
-        type="button"
-        className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100"
-        disabled={isPending}
-        onClick={() => {
-          const connector = connectors[0];
-          if (connector) {
-            connect({ connector });
-          }
-        }}
-      >
-        {isPending ? "Connecting…" : "Connect MetaMask"}
-      </button>
+      <div className="flex flex-col items-end gap-1">
+        <button
+          type="button"
+          className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100"
+          disabled={isPending || busy}
+          onClick={() => void onConnectClick()}
+        >
+          {isPending || busy ? "Connecting…" : "Connect MetaMask"}
+        </button>
+        {error && (
+          <p className="max-w-xs text-right text-[11px] text-red-600">{error}</p>
+        )}
+      </div>
     );
   }
 
+  const needsAgent = loggedIn && agentAuthorized === false;
   const statusLabel = (() => {
     if (busy && !loggedIn) {
       return "Signing in…";
     }
-    if (busy && loggedIn && agentAuthorized !== true) {
+    if (busy && needsAgent) {
       return "Authorizing agent…";
     }
     if (loggedIn && agentAuthorized === true) {
       return null;
     }
-    if (loggedIn && agentAuthorized === false) {
-      return "Authorizing agent…";
+    if (!loggedIn) {
+      return "Sign in…";
     }
-    return "Sign in…";
+    return null;
   })();
 
   return (
@@ -207,7 +225,16 @@ export function ConnectWallet() {
       <div className="flex items-center gap-2">
         {statusLabel ? (
           <span className="text-xs text-slate-500">{statusLabel}</span>
-        ) : (
+        ) : needsAgent ? (
+          <button
+            type="button"
+            className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100"
+            disabled={busy}
+            onClick={() => void onAuthorizeAgentClick()}
+          >
+            Authorize agent
+          </button>
+        ) : loggedIn && agentAuthorized === true ? (
           <button
             type="button"
             className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-center transition hover:bg-emerald-100"
@@ -216,6 +243,15 @@ export function ConnectWallet() {
             <span className="block text-xs font-medium text-emerald-700">
               Deposit
             </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-700 hover:bg-sky-100"
+            disabled={busy}
+            onClick={() => void login()}
+          >
+            Sign in
           </button>
         )}
         <button
@@ -236,8 +272,11 @@ export function ConnectWallet() {
             disabled={busy}
             onClick={() => {
               loginAttemptedFor.current = null;
-              agentAttemptedFor.current = null;
-              void login();
+              if (needsAgent) {
+                void onAuthorizeAgentClick();
+              } else {
+                void login();
+              }
             }}
           >
             Retry

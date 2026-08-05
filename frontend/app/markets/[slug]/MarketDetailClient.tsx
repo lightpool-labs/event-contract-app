@@ -296,6 +296,10 @@ export default function MarketDetailClient({
           onCloseAll={() => {
             void closeAllOrders();
           }}
+          onPriceClick={(nextPrice) => {
+            setOrderType("limit");
+            setPrice(nextPrice);
+          }}
         />
       </div>
 

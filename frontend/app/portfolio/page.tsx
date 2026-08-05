@@ -1,92 +1,105 @@
-import type { BalanceEntry, BookResponse, Market } from "@/lib/types";
-import {
-  findPositionMeta,
-  formatUsd,
-  getPositionBalances,
-  positionUsdValue,
-} from "@/lib/balances";
-import { loadPortfolioSummary } from "@/lib/portfolio";
+"use client";
 
-function outcomeLabel(outcome: string): string {
-  if (outcome === "yes") {
-    return "Yes";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { api } from "@/lib/api";
+import DashboardTabs from "@/components/DashboardTabs";
+import {
+  getSessionToken,
+  SESSION_CHANGED_EVENT,
+} from "@/lib/session";
+import { PORTFOLIO_REFRESH_EVENT } from "@/lib/portfolio";
+import type { BalanceEntry, Market, Order } from "@/lib/types";
+
+type Tab = "position" | "open" | "history";
+
+function parseTab(value: string | null): Tab {
+  if (value === "open" || value === "history") {
+    return value;
   }
-  if (outcome === "no") {
-    return "No";
-  }
-  return outcome;
+  return "position";
 }
 
-export default async function PortfolioPage() {
-  let balances: BalanceEntry[] = [];
-  let markets: Market[] = [];
-  let booksBySpotMarket = new Map<string, BookResponse>();
-  let total = 0;
-  let error: string | null = null;
+function PortfolioClient() {
+  const searchParams = useSearchParams();
+  const activeTab = parseTab(searchParams.get("tab"));
 
-  try {
-    const summary = await loadPortfolioSummary();
-    balances = summary.balances;
-    markets = summary.markets;
-    booksBySpotMarket = summary.booksBySpotMarket;
-    total = summary.portfolio;
-  } catch (e) {
-    error = e instanceof Error ? e.message : "Failed to load portfolio";
+  const [balances, setBalances] = useState<BalanceEntry[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [markets, setMarkets] = useState<Market[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!getSessionToken()) {
+      setBalances([]);
+      setOrders([]);
+      setMarkets([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const [nextBalances, nextOrders, nextMarkets] = await Promise.all([
+        api.getBalances(),
+        api.listOrders(),
+        api.listMarkets(),
+      ]);
+      setBalances(nextBalances);
+      setOrders(nextOrders);
+      setMarkets(nextMarkets);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load portfolio data");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+
+    function onRefresh() {
+      void load();
+    }
+
+    window.addEventListener(PORTFOLIO_REFRESH_EVENT, onRefresh);
+    window.addEventListener(SESSION_CHANGED_EVENT, onRefresh);
+    return () => {
+      window.removeEventListener(PORTFOLIO_REFRESH_EVENT, onRefresh);
+      window.removeEventListener(SESSION_CHANGED_EVENT, onRefresh);
+    };
+  }, [load]);
+
+  if (!getSessionToken() && !loading) {
+    return (
+      <p className="text-sm text-slate-500">
+        Connect your wallet and sign in to view portfolio positions and orders.
+      </p>
+    );
   }
 
-  const positions = getPositionBalances(balances, markets);
+  if (loading && balances.length === 0 && orders.length === 0) {
+    return <p className="text-sm text-slate-500">Loading…</p>;
+  }
 
   return (
-    <div>
-      <p className="mb-4 text-2xl font-semibold">${formatUsd(total)}</p>
+    <DashboardTabs
+      activeTab={activeTab}
+      balances={balances}
+      orders={orders}
+      markets={markets}
+      error={error}
+    />
+  );
+}
 
-      {error && (
-        <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-100 text-left">
-            <tr>
-              <th className="px-4 py-3">Outcome</th>
-              <th className="px-4 py-3">Shares</th>
-              <th className="px-4 py-3">Value</th>
-              <th className="px-4 py-3">Locked</th>
-              <th className="px-4 py-3">Available</th>
-            </tr>
-          </thead>
-          <tbody>
-            {positions.map((balance) => {
-              const meta = findPositionMeta(balance.token, markets);
-              const value = positionUsdValue(balance, markets, booksBySpotMarket);
-
-              return (
-                <tr key={balance.token} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium">
-                    {meta ? (
-                      <>
-                        {meta.question}{" "}
-                        <span>[{outcomeLabel(meta.outcome)}]</span>
-                      </>
-                    ) : (
-                      balance.symbol
-                    )}
-                  </td>
-                  <td className="px-4 py-3">{balance.total}</td>
-                  <td className="px-4 py-3">${formatUsd(value)}</td>
-                  <td className="px-4 py-3">{balance.locked}</td>
-                  <td className="px-4 py-3">{balance.available}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {!error && positions.length === 0 && (
-          <p className="px-4 py-6 text-sm text-slate-500">No positions yet.</p>
-        )}
-      </div>
-    </div>
+export default function PortfolioPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-slate-500">Loading…</p>}>
+      <PortfolioClient />
+    </Suspense>
   );
 }

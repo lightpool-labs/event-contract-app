@@ -34,7 +34,7 @@ function pow10(exp: number): bigint {
 function formatScaledInt(value: bigint, scale: number, displayDecimals: number): string {
   const zero = BigInt(0);
   const negative = value < zero;
-  const abs = negative ? -value : value;
+  let abs = negative ? -value : value;
 
   if (scale > displayDecimals) {
     const factor = pow10(scale - displayDecimals);
@@ -43,11 +43,17 @@ function formatScaledInt(value: bigint, scale: number, displayDecimals: number):
     return formatScaledInt(negative ? -rounded : rounded, displayDecimals, displayDecimals);
   }
 
-  const paddedScale = Math.max(scale, displayDecimals);
-  const padded = abs.toString().padStart(paddedScale + 1, "0");
-  const wholeLen = padded.length - paddedScale;
+  // Increasing display scale must append fractional zeros, not shift existing digits.
+  // e.g. cents "76" (scale 0) with 1 display decimal is "76", not "7.6".
+  if (scale < displayDecimals) {
+    abs *= pow10(displayDecimals - scale);
+    scale = displayDecimals;
+  }
+
+  const padded = abs.toString().padStart(scale + 1, "0");
+  const wholeLen = padded.length - scale;
   const whole = padded.slice(0, wholeLen) || "0";
-  let frac = padded.slice(wholeLen).padEnd(displayDecimals, "0");
+  let frac = padded.slice(wholeLen);
 
   if (displayDecimals > 0) {
     frac = frac.slice(0, displayDecimals).replace(/0+$/, "");

@@ -16,6 +16,7 @@ type OrderBookProps = {
   cancellingLevelKey?: string | null;
   onCancelLevel?: (orders: Order[]) => void;
   onCloseAll?: () => void;
+  onPriceClick?: (price: string) => void;
 };
 
 function parseLevelSize(size: string): number {
@@ -94,7 +95,7 @@ function CloseOrderButton({
       disabled={disabled}
       aria-label="Cancel order"
       title="Cancel order"
-      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-slate-300 text-[10px] leading-none text-slate-500 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-sm leading-none text-slate-500 transition hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-50"
     >
       ×
     </button>
@@ -109,6 +110,7 @@ type DepthRowProps = {
   levelOrders: Order[];
   cancelling: boolean;
   onCancelLevel?: (orders: Order[]) => void;
+  onPriceClick?: (price: string) => void;
 };
 
 function DepthRow({
@@ -119,6 +121,7 @@ function DepthRow({
   levelOrders,
   cancelling,
   onCancelLevel,
+  onPriceClick,
 }: DepthRowProps) {
   const sizeValue = parseLevelSize(level.size);
   const depthPercent = Math.min(100, (sizeValue / maxSize) * 100);
@@ -126,32 +129,46 @@ function DepthRow({
   const barColor = isAsk ? "bg-rose-200" : "bg-emerald-200";
   const textColor = isAsk ? "text-rose-600" : "text-emerald-600";
   const hasUserOrder = levelOrders.length > 0;
+  const priceLabel = `${formatPriceCents(level.price, tickSize)}¢`;
 
   return (
     <tr className="h-6">
       <td className="relative w-1/2 p-0 pr-2">
-        <div className="relative h-6 w-full">
-          <div
-            className={["absolute inset-y-0 left-0", barColor].join(" ")}
-            style={{ width: `${depthPercent}%` }}
-          />
-          {hasUserOrder && onCancelLevel && (
-            <div
-              className="absolute inset-y-0 left-0 z-10 flex items-center pl-0.5"
-              style={{ width: `${depthPercent}%` }}
-            >
+        <div className="flex h-6 w-full items-center gap-1">
+          <div className="flex h-4 w-4 shrink-0 items-center justify-center">
+            {hasUserOrder && onCancelLevel ? (
               <CloseOrderButton
                 disabled={cancelling}
                 onClick={() => onCancelLevel(levelOrders)}
               />
-            </div>
-          )}
+            ) : null}
+          </div>
+          <div className="relative h-6 min-w-0 flex-1">
+            <div
+              className={["absolute inset-y-0 left-0", barColor].join(" ")}
+              style={{ width: `${depthPercent}%` }}
+            />
+          </div>
         </div>
       </td>
       <td className="h-6 p-0 align-middle pl-1 pr-2">
-        <span className={["font-medium tabular-nums", textColor].join(" ")}>
-          {formatPriceCents(level.price, tickSize)}¢
-        </span>
+        {onPriceClick ? (
+          <button
+            type="button"
+            onClick={() => onPriceClick(level.price)}
+            title={`Use ${priceLabel} as limit price`}
+            className={[
+              "font-medium tabular-nums underline-offset-2 hover:underline",
+              textColor,
+            ].join(" ")}
+          >
+            {priceLabel}
+          </button>
+        ) : (
+          <span className={["font-medium tabular-nums", textColor].join(" ")}>
+            {priceLabel}
+          </span>
+        )}
       </td>
       <td className="h-6 p-0 align-middle pr-2 text-right">
         <span className="tabular-nums text-slate-700">{formatBookAmount(level.size)}</span>
@@ -208,6 +225,7 @@ export function OrderBook({
   cancellingLevelKey = null,
   onCancelLevel,
   onCloseAll,
+  onPriceClick,
 }: OrderBookProps) {
   const asks = useMemo(() => [...(book?.asks ?? [])].reverse(), [book?.asks]);
   const bids = book?.bids ?? [];
@@ -272,6 +290,7 @@ export function OrderBook({
                       levelOrders={levelOrders}
                       cancelling={cancellingLevelKey === bookLevelKey("ask", level.price)}
                       onCancelLevel={onCancelLevel}
+                      onPriceClick={onPriceClick}
                     />
                   );
                 })}
@@ -305,6 +324,7 @@ export function OrderBook({
                       levelOrders={levelOrders}
                       cancelling={cancellingLevelKey === bookLevelKey("bid", level.price)}
                       onCancelLevel={onCancelLevel}
+                      onPriceClick={onPriceClick}
                     />
                   );
                 })}
