@@ -127,6 +127,8 @@ function orderFromUserMessage(message: UserOrderWsMessage): Order {
     price: message.price,
     size: message.size,
     status: message.status,
+    chain_order_id: message.chain_order_id,
+    user_address: message.user_address,
   };
 }
 

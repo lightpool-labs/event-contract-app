@@ -164,16 +164,31 @@ async fn cancel_order(
         ));
     }
 
-    let (mut order, chain_order_id, spot_market) = state
+    let mut order = state
         .clob
-        .order_cancel_context(id, &record.lp_address)
-        .await?;
+        .list_orders(&record.lp_address)
+        .await?
+        .into_iter()
+        .find(|order| order.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("order {id} not found")))?;
 
-    let chain_order_id_u64: u64 = chain_order_id
+    if order.status != "open" && order.status != "partial_filled" {
+        return Err(AppError::BadRequest(format!(
+            "order {id} is not cancellable"
+        )));
+    }
+    if order.chain_order_id.is_empty() || order.spot_market.is_empty() {
+        return Err(AppError::Internal(format!(
+            "order {id} missing chain cancel context"
+        )));
+    }
+
+    let chain_order_id_u64: u64 = order
+        .chain_order_id
         .parse()
         .map_err(|e| AppError::Internal(format!("invalid chain order id: {e}")))?;
 
-    let spot_market = parse_token_contract(&spot_market)
+    let spot_market = parse_token_contract(&order.spot_market)
         .map_err(|e| AppError::BadRequest(format!("invalid spot market: {e}")))?;
 
     let agent_signer = state.users.agent_signer(&record)?;

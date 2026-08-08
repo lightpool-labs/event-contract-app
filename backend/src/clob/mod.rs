@@ -30,13 +30,6 @@ struct ReadyResponse {
 }
 
 #[derive(Debug, Deserialize)]
-struct CancelContextResponse {
-    order: Order,
-    chain_order_id: String,
-    spot_market: String,
-}
-
-#[derive(Debug, Deserialize)]
 struct SubmitTxResponse {
     digest: String,
     receipt: TransactionReceipt,
@@ -266,23 +259,6 @@ impl ClobIndexClient {
     pub async fn list_orders(&self, user_address: &str) -> AppResult<Vec<Order>> {
         self.get_json(&format!("/api/orders?user_address={user_address}"))
             .await
-    }
-
-    pub async fn order_cancel_context(
-        &self,
-        order_id: Uuid,
-        user_address: &str,
-    ) -> AppResult<(Order, String, String)> {
-        let response: CancelContextResponse = self
-            .get_json(&format!(
-                "/api/orders/{order_id}/cancel-context?user_address={user_address}"
-            ))
-            .await?;
-        Ok((
-            response.order,
-            response.chain_order_id,
-            response.spot_market,
-        ))
     }
 
     pub async fn mark_order_cancelled(

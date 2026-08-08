@@ -81,6 +81,11 @@ export type Order = {
   price: string;
   size: string;
   status: string;
+  chain_order_id?: string;
+  spot_market?: string;
+  user_address?: string;
+  size_raw?: number;
+  filled_raw?: number;
 };
 
 export type BalanceEntry = {

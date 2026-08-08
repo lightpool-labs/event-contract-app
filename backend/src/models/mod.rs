@@ -33,6 +33,16 @@ pub struct Order {
     pub price: String,
     pub size: String,
     pub status: String,
+    #[serde(default)]
+    pub chain_order_id: String,
+    #[serde(default)]
+    pub spot_market: String,
+    #[serde(default)]
+    pub user_address: String,
+    #[serde(default)]
+    pub size_raw: u64,
+    #[serde(default)]
+    pub filled_raw: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
