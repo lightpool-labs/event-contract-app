@@ -30,7 +30,13 @@ pub struct UserStore {
 
 impl UserStore {
     pub async fn connect(config: &Config) -> Self {
-        match PgPool::connect(&config.database_url).await {
+        let db_url = config.database_url.trim();
+        if db_url.is_empty() || db_url.eq_ignore_ascii_case("memory") {
+            tracing::info!("DATABASE_URL unset/memory; using memory user store");
+            return Self::memory_only(config);
+        }
+
+        match PgPool::connect(db_url).await {
             Ok(pool) => {
                 if let Err(error) = sqlx::migrate!("./migrations").run(&pool).await {
                     tracing::warn!(%error, "database migrate failed; using memory user store");

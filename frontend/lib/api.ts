@@ -19,11 +19,21 @@ import type {
 } from "./types";
 import { getSessionToken } from "./session";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3001/api";
+function apiBaseUrl(): string {
+  // SSR inside Docker must reach the backend service name, not container localhost.
+  if (typeof window === "undefined") {
+    return (
+      process.env.INTERNAL_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      "http://127.0.0.1:3001/api"
+    );
+  }
+  return process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3001/api";
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = typeof window !== "undefined" ? getSessionToken() : null;
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${apiBaseUrl()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

@@ -1,0 +1,51 @@
+name: event-contract-app
+
+x-build-proxy: &build-proxy
+  # host network so build can reach the host proxy on 127.0.0.1:8118
+  network: host
+  args:
+    HTTP_PROXY: ${HTTP_PROXY:-http://127.0.0.1:8118}
+    HTTPS_PROXY: ${HTTPS_PROXY:-http://127.0.0.1:8118}
+    http_proxy: ${HTTP_PROXY:-http://127.0.0.1:8118}
+    https_proxy: ${HTTPS_PROXY:-http://127.0.0.1:8118}
+    NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
+    no_proxy: ${NO_PROXY:-localhost,127.0.0.1}
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      <<: *build-proxy
+    ports:
+      - "3001:3001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3001
+      # Optional. "memory" skips Postgres (markets/orderbook only need clob-index).
+      DATABASE_URL: ${DATABASE_URL:-memory}
+      CLOB_INDEX_URL: ${CLOB_INDEX_URL:-http://host.docker.internal:3002}
+      EVM_RPC_URL: ${EVM_RPC_URL:-http://host.docker.internal:8545}
+      EVM_CHAIN_ID: ${EVM_CHAIN_ID:-1337}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      AGENT_ENCRYPTION_KEY: ${AGENT_ENCRYPTION_KEY:-dev-agent-encryption-key}
+      DEV_SECRET_KEY: ${DEV_SECRET_KEY:-}
+      CASH_TOKEN_ADDRESS: ${CASH_TOKEN_ADDRESS:-}
+      CASH_TOKEN_SYMBOL: ${CASH_TOKEN_SYMBOL:-USDT}
+      ETH_USDT: ${ETH_USDT:-}
+      BRIDGE: ${BRIDGE:-}
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      <<: *build-proxy
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    environment:
+      INTERNAL_API_URL: http://backend:3001/api
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:3001/api}

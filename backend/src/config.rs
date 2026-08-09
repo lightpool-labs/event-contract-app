@@ -30,9 +30,7 @@ impl Config {
                 .unwrap_or(3001),
             clob_index_url: env::var("CLOB_INDEX_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:3002".into()),
-            database_url: env::var("DATABASE_URL").unwrap_or_else(|_| {
-                "postgres://event_app:event_app@127.0.0.1:5432/event_contract_app".into()
-            }),
+            database_url: env::var("DATABASE_URL").unwrap_or_else(|_| "memory".into()),
             dev_secret_key: env::var("DEV_SECRET_KEY").ok().filter(|v| !v.trim().is_empty()),
             cash_token_address: env::var("CASH_TOKEN_ADDRESS")
                 .ok()
