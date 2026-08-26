@@ -32,4 +32,4 @@ k256 = { version = "0.13", features = ["ecdsa"] }
 base64 = "0.22"
 dashmap = "6"
 
-lightpool-sdk = { path = "../../lightpool/crates/lightpool-sdk" }
+lightpool-sdk = { path = "../../lightpool-sdk-rust" }

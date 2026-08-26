@@ -32,6 +32,7 @@ struct ReadyResponse {
 #[derive(Debug, Deserialize)]
 struct SubmitTxResponse {
     digest: String,
+    block_num: u64,
     receipt: TransactionReceipt,
 }
 
@@ -252,6 +253,7 @@ impl ClobIndexClient {
             .await?;
         Ok(SubmitTransactionResponse {
             digest: response.digest,
+            block_num: response.block_num,
             receipt: response.receipt,
         })
     }

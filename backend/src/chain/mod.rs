@@ -797,18 +797,11 @@ pub fn resolve_placed_order_from_receipt(
     None
 }
 
-fn event_sender_matches(event: &lightpool_sdk::TransactionEvent, user: Address) -> bool {
-    event.sender == Some(user)
-}
-
 fn extract_market_order_executed_for_user(
     receipt: &TransactionReceipt,
     user: Address,
 ) -> Option<MarketOrderExecutedEvent> {
     for event in &receipt.events {
-        if !event_sender_matches(event, user) {
-            continue;
-        }
         let EventType::Call(action_name) = &event.event_type else {
             continue;
         };
@@ -819,7 +812,9 @@ fn extract_market_order_executed_for_user(
             continue;
         };
         if let Ok(exec) = bincode::deserialize::<MarketOrderExecutedEvent>(data) {
-            return Some(exec);
+            if exec.creator == user {
+                return Some(exec);
+            }
         }
     }
     None
@@ -827,15 +822,12 @@ fn extract_market_order_executed_for_user(
 
 fn extract_taker_order_filled_for_user(
     receipt: &TransactionReceipt,
-    user: Address,
+    _user: Address,
 ) -> Option<(OrderFilledEvent, u64)> {
     let mut last: Option<OrderFilledEvent> = None;
     let mut filled_raw = 0_u64;
 
     for event in &receipt.events {
-        if !event_sender_matches(event, user) {
-            continue;
-        }
         let EventType::Call(action_name) = &event.event_type else {
             continue;
         };
