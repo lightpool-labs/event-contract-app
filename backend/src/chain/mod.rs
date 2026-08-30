@@ -12,7 +12,8 @@ use lightpool_sdk::{
     CreateEventContractParams, CreateTokenParams, DepositVaultParams, EventData, EventType,
     CancelOrderParams, MintEventContractParams, OrderSide, PlaceOrderParams, SdkError, SdkResult,
     SetAgentParams, Signer, Signature, TimeInForce, TransactionBuilder, TransactionReceipt,
-    VaultDepositedEvent, VaultWithdrawnEvent, WithdrawVaultParams, LIGHTPOOL_EIP712_CHAIN_ID,
+    VaultDepositedEvent, VaultWithdrawnEvent, WithdrawVaultParams, default_inbound_bridge_instance,
+    LIGHTPOOL_EIP712_CHAIN_ID,
     LIGHTPOOL_EIP712_NAME, LIGHTPOOL_EIP712_VERIFYING_CONTRACT, LIGHTPOOL_EIP712_VERSION,
     TOKEN_SCALE,
 };
@@ -448,11 +449,14 @@ impl ChainClient {
         amount: u64,
         evm_recipient: [u8; 20],
     ) -> AppResult<PreparedUserTx> {
-        let action = ActionBuilder::bridge_withdraw(BridgeWithdrawParams {
-            token,
-            amount,
-            evm_recipient,
-        })
+        let action = ActionBuilder::bridge_withdraw(
+            default_inbound_bridge_instance(),
+            BridgeWithdrawParams {
+                token,
+                amount,
+                evm_recipient,
+            },
+        )
         .map_err(|e| AppError::Internal(format!("build bridge_withdraw action: {e}")))?;
         let tx = TransactionBuilder::new()
             .sender(user)
