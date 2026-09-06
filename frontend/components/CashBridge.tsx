@@ -400,7 +400,7 @@ export function CashBridge() {
       const depositData = encodeFunctionData({
         abi: bridgeAbi,
         functionName: "deposit",
-        args: [amountU64, from],
+        args: [token, amountU64, from],
       });
       flushSync(() => {
         setStatus("Confirm deposit in MetaMask…");

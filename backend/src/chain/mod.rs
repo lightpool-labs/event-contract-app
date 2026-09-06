@@ -186,6 +186,7 @@ impl ChainClient {
     pub async fn mint_event_contract(
         &self,
         signer: &Signer,
+        account: Address,
         market_address: ContractAddress,
         collateral_token: ContractAddress,
         yes_token: ContractAddress,
@@ -203,10 +204,14 @@ impl ChainClient {
         let action = ActionBuilder::mint_event_contract(market_address, params)
             .map_err(|e| AppError::Internal(format!("build mint_event_contract action: {e}")))?;
 
-        let tx = TransactionBuilder::new()
+        let mut builder = TransactionBuilder::new()
             .sender(sender)
             .expiration(u64::MAX)
-            .add_action(action)
+            .add_action(action);
+        if account != sender {
+            builder = builder.account(account);
+        }
+        let tx = builder
             .build_and_sign_only(signer)
             .map_err(|e| AppError::Internal(format!("sign mint_event_contract tx: {e}")))?;
 
@@ -228,6 +233,7 @@ impl ChainClient {
     pub async fn burn_event_contract(
         &self,
         signer: &Signer,
+        account: Address,
         market_address: ContractAddress,
         collateral_token: ContractAddress,
         yes_token: ContractAddress,
@@ -245,10 +251,14 @@ impl ChainClient {
         let action = ActionBuilder::burn_event_contract(market_address, params)
             .map_err(|e| AppError::Internal(format!("build burn_event_contract action: {e}")))?;
 
-        let tx = TransactionBuilder::new()
+        let mut builder = TransactionBuilder::new()
             .sender(sender)
             .expiration(u64::MAX)
-            .add_action(action)
+            .add_action(action);
+        if account != sender {
+            builder = builder.account(account);
+        }
+        let tx = builder
             .build_and_sign_only(signer)
             .map_err(|e| AppError::Internal(format!("sign burn_event_contract tx: {e}")))?;
 
@@ -454,7 +464,7 @@ impl ChainClient {
             BridgeWithdrawParams {
                 token,
                 amount,
-                evm_recipient,
+                foreign_recipient: evm_recipient,
             },
         )
         .map_err(|e| AppError::Internal(format!("build bridge_withdraw action: {e}")))?;

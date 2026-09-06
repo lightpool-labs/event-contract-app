@@ -72,7 +72,8 @@ function applyLevelChanges(
 ): BookLevel[] {
   const map = new Map(levels.map((level) => [level.price, level.size]));
   for (const change of changes) {
-    if (change.size === "0") {
+    const sizeValue = Number.parseFloat(change.size);
+    if (!Number.isFinite(sizeValue) || sizeValue === 0) {
       map.delete(change.price);
     } else {
       map.set(change.price, change.size);
@@ -83,14 +84,28 @@ function applyLevelChanges(
     .sort((a, b) => sort(a.price, b.price));
 }
 
+function trimLevels(levels: BookLevel[], depth: number): BookLevel[] {
+  if (depth <= 0 || levels.length <= depth) {
+    return levels;
+  }
+  return levels.slice(0, depth);
+}
+
 export function applyOrderBookDelta(
   book: BookResponse,
   delta: OrderBookDelta,
+  depth = 10,
 ): BookResponse {
   return {
     sequence: delta.sequence,
-    bids: applyLevelChanges(book.bids, delta.bids, comparePriceDesc),
-    asks: applyLevelChanges(book.asks, delta.asks, comparePriceAsc),
+    bids: trimLevels(
+      applyLevelChanges(book.bids, delta.bids, comparePriceDesc),
+      depth,
+    ),
+    asks: trimLevels(
+      applyLevelChanges(book.asks, delta.asks, comparePriceAsc),
+      depth,
+    ),
     last_trade_price: delta.last_trade_price ?? book.last_trade_price,
   };
 }
@@ -269,8 +284,8 @@ export function createOrderBookSubscription(
         if (payload.type === "orderbook_snapshot") {
           currentBook = {
             sequence: payload.sequence,
-            bids: payload.bids,
-            asks: payload.asks,
+            bids: trimLevels(payload.bids, depth),
+            asks: trimLevels(payload.asks, depth),
             last_trade_price: payload.last_trade_price,
           };
           scheduleRender();
@@ -286,7 +301,7 @@ export function createOrderBookSubscription(
               last_trade_price: payload.last_trade_price ?? null,
             };
           }
-          currentBook = applyOrderBookDelta(currentBook, payload);
+          currentBook = applyOrderBookDelta(currentBook, payload, depth);
           scheduleRender();
         }
       } catch (error) {

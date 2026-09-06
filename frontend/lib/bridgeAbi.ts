@@ -41,6 +41,7 @@ export const bridgeAbi = [
     name: "deposit",
     stateMutability: "nonpayable",
     inputs: [
+      { name: "token", type: "address" },
       { name: "amount", type: "uint64" },
       { name: "lightpoolRecipient", type: "address" },
     ],

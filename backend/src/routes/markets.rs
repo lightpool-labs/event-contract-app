@@ -8,7 +8,9 @@ use axum::{
 };
 use lightpool_sdk::parse_token_contract;
 
+use crate::auth::AuthUser;
 use crate::chain::{format_token_amount, parse_order_size};
+use crate::crypto_util::parse_address;
 use crate::error::{AppError, AppResult};
 use crate::models::{Market, MarketsPage, MintBurnRequest, MintBurnResponse, QueryMarketsParams};
 use crate::state::AppState;
@@ -42,6 +44,7 @@ async fn get_market(
 
 async fn mint_market(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(slug): Path<String>,
     Json(body): Json<MintBurnRequest>,
 ) -> AppResult<Json<MintBurnResponse>> {
@@ -57,16 +60,20 @@ async fn mint_market(
     let no_token = parse_token_contract(&market.no_token)
         .map_err(|e| AppError::BadRequest(format!("invalid no token: {e}")))?;
 
-    let signer = state
-        .signer
-        .dev_signer()
-        .await
-        .map_err(|e| AppError::Internal(format!("signer unavailable: {e}")))?;
+    let record = state.users.get_or_create(&user.lp_address).await?;
+    if !record.agent_authorized {
+        return Err(AppError::BadRequest(
+            "agent not authorized; call set_agent first".into(),
+        ));
+    }
+    let agent_signer = state.users.agent_signer(&record)?;
+    let account = parse_address(&record.lp_address)?;
 
     let result = state
         .chain
         .mint_event_contract(
-            &signer,
+            &agent_signer,
+            account,
             market_address,
             collateral_token,
             yes_token,
@@ -84,6 +91,7 @@ async fn mint_market(
 
 async fn burn_market(
     State(state): State<AppState>,
+    user: AuthUser,
     Path(slug): Path<String>,
     Json(body): Json<MintBurnRequest>,
 ) -> AppResult<Json<MintBurnResponse>> {
@@ -99,16 +107,20 @@ async fn burn_market(
     let no_token = parse_token_contract(&market.no_token)
         .map_err(|e| AppError::BadRequest(format!("invalid no token: {e}")))?;
 
-    let signer = state
-        .signer
-        .dev_signer()
-        .await
-        .map_err(|e| AppError::Internal(format!("signer unavailable: {e}")))?;
+    let record = state.users.get_or_create(&user.lp_address).await?;
+    if !record.agent_authorized {
+        return Err(AppError::BadRequest(
+            "agent not authorized; call set_agent first".into(),
+        ));
+    }
+    let agent_signer = state.users.agent_signer(&record)?;
+    let account = parse_address(&record.lp_address)?;
 
     let result = state
         .chain
         .burn_event_contract(
-            &signer,
+            &agent_signer,
+            account,
             market_address,
             collateral_token,
             yes_token,
