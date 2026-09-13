@@ -25,6 +25,10 @@ export type Market = {
   slug: string;
   question: string;
   icon_url?: string | null;
+  event_slug?: string | null;
+  group_item_title?: string | null;
+  /** Yes mark price in cents (0-100): last trade or (best bid + best ask) / 2. */
+  yes_rate?: string | null;
   market_address: string;
   collateral_token: string;
   yes_token: string;
@@ -128,6 +132,8 @@ export type CashToken = {
 export type CreateEventContractRequest = {
   question: string;
   icon_url?: string;
+  event_slug?: string;
+  group_item_title?: string;
   collateral_token?: string;
   oracle?: string;
   resolution_deadline: number;
@@ -136,6 +142,12 @@ export type CreateEventContractRequest = {
   maker_fee_bps?: number;
   taker_fee_bps?: number;
   allow_market_orders?: boolean;
+};
+
+export type UpdateMarketMetadataRequest = {
+  event_slug?: string;
+  group_item_title?: string;
+  icon_url?: string;
 };
 
 export type MintBurnRequest = {
@@ -168,6 +180,8 @@ export type CreateEventContractResponse = {
   slug: string;
   question: string;
   icon_url?: string | null;
+  event_slug?: string | null;
+  group_item_title?: string | null;
   market_address: string;
   collateral_token: string;
   yes_token: string;

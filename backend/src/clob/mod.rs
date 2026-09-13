@@ -10,7 +10,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{BalanceEntry, Market, MarketsPage, Order, QueryMarketsParams, QueryVaultsParams, Vault, VaultsPage};
+use crate::models::{
+    BalanceEntry, Market, MarketsPage, Order, QueryMarketsParams, QueryVaultsParams, SpotBook,
+    Vault, VaultsPage,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BalanceTokenSpec {
@@ -169,6 +172,14 @@ impl ClobIndexClient {
         self.get_json(&format!("/api/markets/slug/{slug}")).await
     }
 
+    pub async fn get_spot_book(&self, spot_market: &str, depth: u32) -> AppResult<SpotBook> {
+        let encoded = urlencoding_encode(spot_market);
+        self.get_json(&format!(
+            "/api/spot/{encoded}/book?depth={depth}"
+        ))
+        .await
+    }
+
     pub async fn query_vaults(&self, params: &QueryVaultsParams) -> AppResult<VaultsPage> {
         self.get_json_with_query("/api/vaults", params).await
     }
@@ -296,3 +307,23 @@ impl ClobIndexClient {
         .await
     }
 }
+
+fn urlencoding_encode(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*byte as char);
+            }
+            _ => {
+                out.push('%');
+                out.push(char::from(HEX[(byte >> 4) as usize]));
+                out.push(char::from(HEX[(byte & 0x0f) as usize]));
+            }
+        }
+    }
+    out
+}
+
+const HEX: &[u8; 16] = b"0123456789ABCDEF";
+

@@ -1,19 +1,24 @@
 // Copyright (c) LightPool Labs
 // Author: xiaoyu1998
 
+use std::collections::HashMap;
+
 use axum::{
     extract::{Path, Query, State},
     routing::{get, post},
     Json, Router,
 };
 use lightpool_sdk::parse_token_contract;
+use tokio::task::JoinSet;
 
 use crate::auth::AuthUser;
 use crate::chain::{format_token_amount, parse_order_size};
 use crate::crypto_util::parse_address;
 use crate::error::{AppError, AppResult};
+use crate::market_metadata::MarketMetadata;
 use crate::models::{Market, MarketsPage, MintBurnRequest, MintBurnResponse, QueryMarketsParams};
 use crate::state::AppState;
+use crate::yes_rate::yes_rate_from_book;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -24,14 +29,16 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn resolve_market(state: &AppState, slug: &str) -> AppResult<Market> {
-    state.clob.get_market_by_slug(slug).await
+    let market = state.clob.get_market_by_slug(slug).await?;
+    enrich_market(state, market).await
 }
 
 async fn query_markets(
     State(state): State<AppState>,
     Query(params): Query<QueryMarketsParams>,
 ) -> AppResult<Json<MarketsPage>> {
-    let page = state.clob.query_markets(&params).await?;
+    let mut page = state.clob.query_markets(&params).await?;
+    page.markets = enrich_markets(&state, page.markets).await?;
     Ok(Json(page))
 }
 
@@ -134,4 +141,61 @@ async fn burn_market(
         amount: format_token_amount(result.amount),
         tx_digest: result.tx_digest,
     }))
+}
+
+async fn enrich_market(state: &AppState, market: Market) -> AppResult<Market> {
+    let mut markets = enrich_markets(state, vec![market]).await?;
+    markets
+        .pop()
+        .ok_or_else(|| AppError::Internal("missing enriched market".into()))
+}
+
+async fn enrich_markets(state: &AppState, mut markets: Vec<Market>) -> AppResult<Vec<Market>> {
+    if markets.is_empty() {
+        return Ok(markets);
+    }
+
+    let addresses: Vec<String> = markets
+        .iter()
+        .map(|market| market.market_address.clone())
+        .collect();
+    let metadata_rows = state
+        .market_metadata
+        .get_many_by_market_addresses(&addresses)
+        .await?;
+    let metadata_by_address: HashMap<String, MarketMetadata> = metadata_rows
+        .into_iter()
+        .map(|row| (row.market_address.to_lowercase(), row))
+        .collect();
+
+    for market in &mut markets {
+        if let Some(meta) = metadata_by_address.get(&market.market_address.to_lowercase()) {
+            if meta.icon_url.is_some() {
+                market.icon_url = meta.icon_url.clone();
+            }
+            market.event_slug = meta.event_slug.clone();
+            market.group_item_title = meta.group_item_title.clone();
+        }
+    }
+
+    let mut join_set = JoinSet::new();
+    for (index, market) in markets.iter().enumerate() {
+        let clob = state.clob.clone();
+        let spot = market.yes_spot_market.clone();
+        join_set.spawn(async move {
+            let book = clob.get_spot_book(&spot, 1).await.ok();
+            let rate = book.as_ref().and_then(yes_rate_from_book);
+            (index, rate)
+        });
+    }
+
+    while let Some(joined) = join_set.join_next().await {
+        if let Ok((index, rate)) = joined {
+            if let Some(market) = markets.get_mut(index) {
+                market.yes_rate = rate;
+            }
+        }
+    }
+
+    Ok(markets)
 }

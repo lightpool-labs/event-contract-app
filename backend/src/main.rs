@@ -8,11 +8,13 @@ mod clob;
 mod config;
 mod crypto_util;
 mod error;
+mod market_metadata;
 mod models;
 mod routes;
 mod slug;
 mod state;
 mod users;
+mod yes_rate;
 
 use std::net::SocketAddr;
 

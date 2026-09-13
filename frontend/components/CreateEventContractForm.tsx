@@ -14,6 +14,8 @@ function defaultDeadline(): string {
 export function CreateEventContractForm() {
   const [question, setQuestion] = useState("Will BTC reach 100k by end of 2026?");
   const [iconUrl, setIconUrl] = useState("");
+  const [eventSlug, setEventSlug] = useState("");
+  const [groupItemTitle, setGroupItemTitle] = useState("");
   const [cashToken, setCashToken] = useState<CashToken | null>(null);
   const [cashTokenLoading, setCashTokenLoading] = useState(true);
   const [collateralToken, setCollateralToken] = useState("");
@@ -82,6 +84,8 @@ export function CreateEventContractForm() {
       const response = await api.createEventContract({
         question: question.trim(),
         icon_url: iconUrl.trim() || undefined,
+        event_slug: eventSlug.trim() || undefined,
+        group_item_title: groupItemTitle.trim() || undefined,
         collateral_token: cashToken ? undefined : collateralToken.trim(),
         resolution_deadline: Math.floor(deadlineMs / 1000),
         tick_size: Math.round(tick * 1_000_000),
@@ -162,6 +166,37 @@ export function CreateEventContractForm() {
               </p>
             </div>
           </div>
+        </div>
+
+        <div>
+          <label htmlFor="eventSlug" className="mb-1 block text-sm font-medium text-slate-700">
+            Event slug (optional)
+          </label>
+          <input
+            id="eventSlug"
+            type="text"
+            value={eventSlug}
+            onChange={(e) => setEventSlug(e.target.value)}
+            placeholder="shared-event-slug-for-grouping"
+            className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="groupItemTitle"
+            className="mb-1 block text-sm font-medium text-slate-700"
+          >
+            Group item title (optional)
+          </label>
+          <input
+            id="groupItemTitle"
+            type="text"
+            value={groupItemTitle}
+            onChange={(e) => setGroupItemTitle(e.target.value)}
+            placeholder="September 7"
+            className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+          />
         </div>
 
         <div>

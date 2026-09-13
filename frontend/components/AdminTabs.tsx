@@ -3,16 +3,21 @@
 import Link from "next/link";
 import { CreateEventContractForm } from "@/components/CreateEventContractForm";
 import { CreateTokenForm } from "@/components/CreateTokenForm";
+import { EditMarketMetadataForm } from "@/components/EditMarketMetadataForm";
 
-type Tab = "token" | "event";
+type Tab = "token" | "event" | "metadata";
 
 const tabs: { id: Tab; label: string }[] = [
+  { id: "metadata", label: "Update Metadata" },
   { id: "event", label: "Create Event" },
   { id: "token", label: "Create Token" },
 ];
 
 function tabHref(tab: Tab) {
-  return tab === "event" ? "/admin" : `/admin?tab=${tab}`;
+  if (tab === "metadata") {
+    return "/admin";
+  }
+  return `/admin?tab=${tab}`;
 }
 
 export default function AdminTabs({ activeTab }: { activeTab: Tab }) {
@@ -35,7 +40,15 @@ export default function AdminTabs({ activeTab }: { activeTab: Tab }) {
         ))}
       </div>
 
-      {activeTab === "event" ? (
+      {activeTab === "metadata" ? (
+        <div>
+          <p className="mb-4 text-sm text-slate-600">
+            Update app-side metadata for markets already created by liquidity-maker / clob-index.
+            Does not write to clob-index.
+          </p>
+          <EditMarketMetadataForm />
+        </div>
+      ) : activeTab === "event" ? (
         <div>
           <p className="mb-4 text-sm text-slate-600">
             Launch a prediction event with YES/NO outcome tokens and spot markets.

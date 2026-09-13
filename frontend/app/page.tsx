@@ -1,5 +1,7 @@
 import { api } from "@/lib/api";
+import { EventMarketGroup } from "@/components/EventMarketGroup";
 import { MarketListItem } from "@/components/MarketListItem";
+import { groupMarketsForList } from "@/lib/marketGroups";
 import type { Market } from "@/lib/types";
 
 export default async function HomePage() {
@@ -12,6 +14,8 @@ export default async function HomePage() {
     error = e instanceof Error ? e.message : "Failed to load markets";
   }
 
+  const entries = groupMarketsForList(markets);
+
   return (
     <div>
       {error && (
@@ -21,11 +25,19 @@ export default async function HomePage() {
       )}
 
       <div className="grid gap-4">
-        {markets.map((market) => (
-          <MarketListItem key={market.id} market={market} />
-        ))}
+        {entries.map((entry) =>
+          entry.kind === "group" ? (
+            <EventMarketGroup
+              key={`event:${entry.eventSlug}`}
+              eventSlug={entry.eventSlug}
+              markets={entry.markets}
+            />
+          ) : (
+            <MarketListItem key={entry.market.id} market={entry.market} />
+          ),
+        )}
 
-        {!error && markets.length === 0 && (
+        {!error && entries.length === 0 && (
           <p className="text-sm text-slate-500">No markets yet.</p>
         )}
       </div>

@@ -11,6 +11,13 @@ pub struct Market {
     pub question: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_slug: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_item_title: Option<String>,
+    /// Yes mark price in cents (0-100), from last trade or (best bid + best ask) / 2.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub yes_rate: Option<String>,
     pub market_address: String,
     pub collateral_token: String,
     pub yes_token: String,
@@ -19,6 +26,21 @@ pub struct Market {
     pub no_spot_market: String,
     pub state: String,
     pub resolution_deadline: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpotBookLevel {
+    pub price: String,
+    pub size: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpotBook {
+    pub sequence: u64,
+    pub bids: Vec<SpotBookLevel>,
+    pub asks: Vec<SpotBookLevel>,
+    #[serde(default)]
+    pub last_trade_price: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +97,8 @@ pub struct CreateTokenResponse {
 pub struct CreateEventContractRequest {
     pub question: String,
     pub icon_url: Option<String>,
+    pub event_slug: Option<String>,
+    pub group_item_title: Option<String>,
     pub collateral_token: Option<String>,
     pub oracle: Option<String>,
     pub resolution_deadline: u64,
@@ -83,6 +107,13 @@ pub struct CreateEventContractRequest {
     pub maker_fee_bps: Option<u16>,
     pub taker_fee_bps: Option<u16>,
     pub allow_market_orders: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateMarketMetadataRequest {
+    pub event_slug: Option<String>,
+    pub group_item_title: Option<String>,
+    pub icon_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -104,6 +135,10 @@ pub struct CreateEventContractResponse {
     pub question: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_slug: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_item_title: Option<String>,
     pub market_address: String,
     pub collateral_token: String,
     pub yes_token: String,

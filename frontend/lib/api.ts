@@ -11,6 +11,7 @@ import type {
   MintBurnResponse,
   Order,
   PlaceOrderRequest,
+  UpdateMarketMetadataRequest,
   Vault,
   VaultDepositRequest,
   VaultDepositWithdrawResponse,
@@ -289,6 +290,11 @@ export const api = {
   createEventContract: (body: CreateEventContractRequest) =>
     request<CreateEventContractResponse>("/admin/event-contracts", {
       method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateMarketMetadata: (slug: string, body: UpdateMarketMetadataRequest) =>
+    request<Market>(`/admin/markets/${encodeURIComponent(slug)}/metadata`, {
+      method: "PUT",
       body: JSON.stringify(body),
     }),
   mintMarket: (slug: string, body: MintBurnRequest) =>

@@ -4,14 +4,19 @@
 use std::str::FromStr;
 use std::time::Duration;
 
-use axum::{extract::State, routing::{get, post}, Json, Router};
+use axum::{
+    extract::{Path, State},
+    routing::{get, post, put},
+    Json, Router,
+};
 use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
 use crate::chain::market_uuid;
+use crate::market_metadata::{MarketMetadata, MarketMetadataPatch};
 use crate::models::{
     CreateEventContractRequest, CreateEventContractResponse, CreateTokenRequest,
-    CreateTokenResponse, Market, QueryMarketsParams,
+    CreateTokenResponse, Market, QueryMarketsParams, UpdateMarketMetadataRequest,
 };
 use crate::state::AppState;
 use lightpool_sdk::{parse_token_contract, Address};
@@ -27,6 +32,7 @@ pub fn router() -> Router<AppState> {
         .route("/cash-token", get(get_cash_token))
         .route("/tokens", post(create_token))
         .route("/event-contracts", post(create_event_contract))
+        .route("/markets/:slug/metadata", put(update_market_metadata))
 }
 
 async fn get_cash_token(State(state): State<AppState>) -> Json<Option<CashTokenResponse>> {
@@ -116,7 +122,9 @@ async fn create_event_contract(
     let taker_fee_bps = body.taker_fee_bps.unwrap_or(20);
     let allow_market_orders = body.allow_market_orders.unwrap_or(true);
 
-    let icon_url = normalize_icon_url(body.icon_url.as_deref());
+    let icon_url = normalize_optional_text(body.icon_url.as_deref(), 500_000);
+    let event_slug = normalize_optional_text(body.event_slug.as_deref(), 256);
+    let group_item_title = normalize_optional_text(body.group_item_title.as_deref(), 256);
 
     let result = state
         .chain
@@ -146,11 +154,26 @@ async fn create_event_contract(
 
     let market_address = result.market_address.to_string();
     let slug = resolve_market_slug(&state, &market_address, question).await;
+
+    let metadata = state
+        .market_metadata
+        .upsert(MarketMetadata {
+            market_address: market_address.clone(),
+            slug: slug.clone(),
+            event_slug: event_slug.clone(),
+            group_item_title: group_item_title.clone(),
+            icon_url: icon_url.clone(),
+        })
+        .await?;
+
     let market = Market {
         id: market_uuid(&market_address),
         slug: slug.clone(),
         question: question.to_string(),
-        icon_url: icon_url.clone(),
+        icon_url: metadata.icon_url.clone(),
+        event_slug: metadata.event_slug.clone(),
+        group_item_title: metadata.group_item_title.clone(),
+        yes_rate: None,
         market_address: market_address.clone(),
         collateral_token: result.collateral_token.to_string(),
         yes_token: result.yes_token.to_string(),
@@ -165,7 +188,9 @@ async fn create_event_contract(
         market_id: market.id,
         slug: market.slug.clone(),
         question: question.to_string(),
-        icon_url,
+        icon_url: market.icon_url,
+        event_slug: market.event_slug,
+        group_item_title: market.group_item_title,
         market_address,
         collateral_token: market.collateral_token,
         yes_token: market.yes_token,
@@ -177,6 +202,48 @@ async fn create_event_contract(
         tx_digest: result.tx_digest,
         creator: creator.to_string(),
     }))
+}
+
+async fn update_market_metadata(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Json(body): Json<UpdateMarketMetadataRequest>,
+) -> AppResult<Json<Market>> {
+    let slug = slug.trim();
+    if slug.is_empty() {
+        return Err(AppError::BadRequest("slug is required".into()));
+    }
+
+    let market = state.clob.get_market_by_slug(slug).await?;
+    let metadata = state
+        .market_metadata
+        .patch_by_slug(
+            &market.slug,
+            &market.market_address,
+            MarketMetadataPatch {
+                event_slug: body
+                    .event_slug
+                    .map(|value| normalize_optional_text(Some(&value), 256)),
+                group_item_title: body
+                    .group_item_title
+                    .map(|value| normalize_optional_text(Some(&value), 256)),
+                icon_url: body
+                    .icon_url
+                    .map(|value| normalize_optional_text(Some(&value), 500_000)),
+            },
+        )
+        .await?;
+
+    let mut market = market;
+    market.icon_url = metadata.icon_url;
+    market.event_slug = metadata.event_slug;
+    market.group_item_title = metadata.group_item_title;
+
+    if let Ok(book) = state.clob.get_spot_book(&market.yes_spot_market, 1).await {
+        market.yes_rate = crate::yes_rate::yes_rate_from_book(&book);
+    }
+
+    Ok(Json(market))
 }
 
 async fn resolve_collateral_token(
@@ -198,12 +265,9 @@ async fn resolve_collateral_token(
         .map_err(|e| AppError::BadRequest(format!("invalid collateral_token: {e}")))
 }
 
-fn normalize_icon_url(icon_url: Option<&str>) -> Option<String> {
-    let value = icon_url?.trim();
-    if value.is_empty() {
-        return None;
-    }
-    if value.len() > 500_000 {
+fn normalize_optional_text(value: Option<&str>, max_len: usize) -> Option<String> {
+    let value = value?.trim();
+    if value.is_empty() || value.len() > max_len {
         return None;
     }
     Some(value.to_string())

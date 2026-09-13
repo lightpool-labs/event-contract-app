@@ -4,6 +4,17 @@ import Link from "next/link";
 import { MarketIcon } from "@/components/MarketIcon";
 import type { Market } from "@/lib/types";
 
+function formatYesRate(yesRate?: string | null): string {
+  if (!yesRate) {
+    return "—";
+  }
+  const value = Number.parseFloat(yesRate);
+  if (!Number.isFinite(value)) {
+    return "—";
+  }
+  return `${value % 1 === 0 ? value.toFixed(0) : value.toFixed(1)}%`;
+}
+
 export function MarketListItem({ market }: { market: Market }) {
   return (
     <article className="rounded-xl border border-sky-100 bg-white p-5 shadow-sm transition hover:border-sky-300 hover:shadow-md">
@@ -28,19 +39,26 @@ export function MarketListItem({ market }: { market: Market }) {
           </div>
         </Link>
 
-        <div className="grid min-w-[280px] shrink-0 grid-cols-2 gap-2 self-end">
-          <Link
-            href={`/markets/${market.slug}/mint-burn?tab=mint`}
-            className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-center transition hover:bg-emerald-100"
-          >
-            <span className="block text-xs font-medium text-emerald-700">Mint</span>
-          </Link>
-          <Link
-            href={`/markets/${market.slug}/mint-burn?tab=burn`}
-            className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-center transition hover:bg-rose-100"
-          >
-            <span className="block text-xs font-medium text-rose-700">Burn</span>
-          </Link>
+        <div className="flex shrink-0 flex-col items-end gap-2 self-end">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-right">
+            <span className="text-2xl font-semibold tabular-nums text-slate-900">
+              {formatYesRate(market.yes_rate)}
+            </span>
+          </div>
+          <div className="grid min-w-[280px] grid-cols-2 gap-2">
+            <Link
+              href={`/markets/${market.slug}/mint-burn?tab=mint`}
+              className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-center transition hover:bg-emerald-100"
+            >
+              <span className="block text-xs font-medium text-emerald-700">Mint</span>
+            </Link>
+            <Link
+              href={`/markets/${market.slug}/mint-burn?tab=burn`}
+              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-center transition hover:bg-rose-100"
+            >
+              <span className="block text-xs font-medium text-rose-700">Burn</span>
+            </Link>
+          </div>
         </div>
       </div>
     </article>
